@@ -1,0 +1,97 @@
+name: STOIXDOME UI A2 S1 REAL PACKAGE VALIDATION
+
+on:
+  push:
+    branches:
+      - validation/stoixdome-ui-a2-s1-real-20260919
+
+permissions:
+  contents: read
+
+jobs:
+  real-ui-package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - name: Checkout exact validation branch
+        uses: actions/checkout@v4
+
+      - name: Setup exact Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Pin exact npm
+        run: |
+          set -euo pipefail
+          npm install --global npm@11.12.1 --no-audit --no-fund
+          test "$(node --version)" = "v24.15.0"
+          test "$(npm --version)" = "11.12.1"
+          echo "TOOLCHAIN_NODE=PASS::$(node --version)"
+          echo "TOOLCHAIN_NPM=PASS::$(npm --version)"
+
+      - name: Verify exact candidate inputs
+        run: |
+          set -euo pipefail
+          LOCK_SHA="$(sha256sum package-lock.json | awk '{print toupper($1)}')"
+          test "$LOCK_SHA" = "4A3603936E0C28EB1EA01AAE15A1A6F82E436377F72EF99F2921C080EA6BCCE3"
+          test ! -e .env.local
+          echo "PACKAGE_LOCK_SHA256=PASS::$LOCK_SHA"
+          echo "TRACKED_UI_ENV_LOCAL=ABSENT"
+
+      - name: Verify active Product-v1 security surface
+        run: |
+          set -euo pipefail
+          FILES="src/app src/lib/access-context.ts src/lib/read-model-contracts.ts"
+          ! grep -RIn --fixed-strings 'NEXT_PUBLIC_PFP_SECRET' $FILES
+          ! grep -RIn --fixed-strings 'NEXT_PUBLIC_STOIX_API_KEY' $FILES
+          ! grep -RIn --fixed-strings 'NEXT_PUBLIC_AXIOM_API_KEY' $FILES
+          ! grep -RIn --fixed-strings 'x-api-key' $FILES
+          ! grep -RIn --fixed-strings 'pfp_bridge' $FILES
+          ! grep -RIn --fixed-strings 'new WebSocket(' $FILES
+          ! grep -RIn --fixed-strings 'executeEnforcement' $FILES
+          echo "ACTIVE_UI_SECURITY_GATE=PASS"
+
+      - name: Real clean dependency install
+        run: |
+          set -euo pipefail
+          npm ci --ignore-scripts --include=optional --no-audit --no-fund
+          echo "NPM_CI=PASS"
+
+      - name: Verify real Linux native dependencies
+        run: |
+          set -euo pipefail
+          test -f node_modules/@next/swc-linux-x64-gnu/next-swc.linux-x64-gnu.node
+          test -f node_modules/@unrs/resolver-binding-linux-x64-gnu/resolver.linux-x64-gnu.node
+          node -e "require('./node_modules/@next/swc-linux-x64-gnu/next-swc.linux-x64-gnu.node'); console.log('NEXT_SWC_NATIVE_LOAD=PASS')"
+          node -e "require('./node_modules/@unrs/resolver-binding-linux-x64-gnu/resolver.linux-x64-gnu.node'); console.log('UNRS_NATIVE_LOAD=PASS')"
+
+      - name: Real TypeScript full Product-v1 scope
+        run: |
+          set -euo pipefail
+          test "$(node node_modules/typescript/bin/tsc --version)" = "Version 5.8.3"
+          node node_modules/typescript/bin/tsc --noEmit
+          echo "TYPESCRIPT_NOEMIT=PASS::5.8.3"
+
+      - name: Real Jest
+        run: |
+          set -euo pipefail
+          npm test -- --runInBand
+          echo "JEST=PASS"
+
+      - name: Real Next production build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: |
+          set -euo pipefail
+          npm run build
+          echo "NEXT_BUILD=PASS"
+
+      - name: Final real validation marker
+        run: |
+          echo "UI_A2_S1_REAL_PACKAGE_VALIDATION=PASS"
