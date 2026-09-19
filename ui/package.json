@@ -1,0 +1,32 @@
+{
+  "name": "verdictum-ui",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "dependencies": {
+    "next": "15.3.2",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/jest": "^30.0.0",
+    "@types/node": "22.15.17",
+    "@types/react": "19.1.4",
+    "@types/react-dom": "19.1.4",
+    "@types/ws": "^8.18.1",
+    "jest": "^30.4.2",
+    "jest-environment-jsdom": "^30.4.1",
+    "node-fetch": "^3.3.2",
+    "ts-jest": "^29.4.9",
+    "typescript": "5.8.3",
+    "ws": "^8.20.1"
+  }
+}
