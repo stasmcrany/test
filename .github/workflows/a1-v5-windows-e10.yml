@@ -1,9 +1,9 @@
 name: A1 V5 Windows E10
 
 on:
-  pull_request:
+  push:
     branches:
-      - master
+      - a1-v5-windows-e10-20261102
 
 permissions:
   contents: read
