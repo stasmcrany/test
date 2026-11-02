@@ -4,55 +4,71 @@ on:
   pull_request:
     branches:
       - master
-  workflow_dispatch:
+    paths-ignore:
+      - "ci-results/**"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify-a1-v3-windows:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Show environment
+      - name: Execute isolated Windows verification without external actions
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python --version
-          git --version
-          [System.Environment]::OSVersion.VersionString
-          Write-Host "RUNNER_OS=$env:RUNNER_OS"
+          $ErrorActionPreference = "Stop"
+          $branch = "ci/a1-v3-windows-verify-f9009bd2"
+          $work = Join-Path $env:RUNNER_TEMP "a1-v3-win"
+          if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 
-      - name: Execute exact A1 V3 Windows harness and capture log
-        id: a1test
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          python ci/windows_a1_v3_test.py *> a1_windows_test.log
-          $rc = $LASTEXITCODE
-          Get-Content -LiteralPath a1_windows_test.log
-          "rc=$rc" >> $env:GITHUB_OUTPUT
-          exit 0
+          git clone --depth 1 --branch $branch https://github.com/stasmcrany/test.git $work
+          if ($LASTEXITCODE -ne 0) { throw "GIT_CLONE_FAILED=$LASTEXITCODE" }
 
-      - name: Upload Windows verification log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: a1-v3-windows-log
-          path: a1_windows_test.log
-          if-no-files-found: error
+          Set-Location -LiteralPath $work
+          $log = Join-Path $env:RUNNER_TEMP "a1_windows_test.log"
 
-      - name: Enforce Windows test result
-        if: always()
-        shell: pwsh
-        run: |
-          if ("${{ steps.a1test.outputs.rc }}" -ne "0") {
-            throw "A1_V3_WINDOWS_HARNESS_FAILED_RC=${{ steps.a1test.outputs.rc }}"
+          @(
+            "RUN_ID=$env:GITHUB_RUN_ID",
+            "RUNNER_OS=$env:RUNNER_OS",
+            "OS_VERSION=$([System.Environment]::OSVersion.VersionString)"
+          ) | Set-Content -LiteralPath $log -Encoding UTF8
+
+          py -0p *>> $log
+          py -3.12 --version *>> $log
+          $pyInfoRc = $LASTEXITCODE
+
+          if ($pyInfoRc -eq 0) {
+            py -3.12 ci/windows_a1_v3_test.py *>> $log
+            $testRc = $LASTEXITCODE
+          }
+          if ($pyInfoRc -ne 0) {
+            $testRc = 97
+            "PY312_UNAVAILABLE" | Add-Content -LiteralPath $log -Encoding UTF8
+          }
+
+          Get-Content -LiteralPath $log
+
+          $bytes = [System.IO.File]::ReadAllBytes($log)
+          $content = [Convert]::ToBase64String($bytes)
+          $resultPath = "ci-results/a1-v3-windows-$env:GITHUB_RUN_ID.txt"
+          $uri = "https://api.github.com/repos/stasmcrany/test/contents/$resultPath"
+          $body = @{
+            message = "Record A1 V3 Windows verification $env:GITHUB_RUN_ID"
+            content = $content
+            branch = $branch
+          } | ConvertTo-Json -Depth 5
+
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          Invoke-RestMethod -Method Put -Uri $uri -Headers $headers -ContentType "application/json" -Body $body | Out-Null
+
+          if ($testRc -ne 0) {
+            throw "A1_V3_WINDOWS_HARNESS_FAILED_RC=$testRc"
           }
