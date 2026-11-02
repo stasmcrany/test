@@ -30,7 +30,29 @@ jobs:
           [System.Environment]::OSVersion.VersionString
           Write-Host "RUNNER_OS=$env:RUNNER_OS"
 
-      - name: Verify and execute exact A1 V3 on Windows
+      - name: Execute exact A1 V3 Windows harness and capture log
+        id: a1test
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python ci/windows_a1_v3_test.py *> a1_windows_test.log
+          $rc = $LASTEXITCODE
+          Get-Content -LiteralPath a1_windows_test.log
+          "rc=$rc" >> $env:GITHUB_OUTPUT
+          exit 0
+
+      - name: Upload Windows verification log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a1-v3-windows-log
+          path: a1_windows_test.log
+          if-no-files-found: error
+
+      - name: Enforce Windows test result
+        if: always()
         shell: pwsh
         run: |
-          python ci/windows_a1_v3_test.py
+          if ("${{ steps.a1test.outputs.rc }}" -ne "0") {
+            throw "A1_V3_WINDOWS_HARNESS_FAILED_RC=${{ steps.a1test.outputs.rc }}"
+          }
