@@ -114,3 +114,11 @@ jobs:
         with:
           name: a1-v5-windows-e10-manifest
           path: ${{ runner.temp }}\a1-v5-windows-e10\LOCAL_MAIN_CAPTURE_MANIFEST.json
+
+
+  ubuntu-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Hosted runner allocation probe
+        run: echo "UBUNTU_HOSTED_RUNNER_ALLOCATED=YES"
