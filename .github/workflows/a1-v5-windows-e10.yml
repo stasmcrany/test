@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - a1-v5-windows-e10-20261102
+  pull_request:
+    branches:
+      - master
 
 permissions:
   contents: read
