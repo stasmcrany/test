@@ -1,0 +1,36 @@
+name: A1 V3 Windows Verification
+
+on:
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-a1-v3-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Show environment
+        shell: pwsh
+        run: |
+          python --version
+          git --version
+          [System.Environment]::OSVersion.VersionString
+          Write-Host "RUNNER_OS=$env:RUNNER_OS"
+
+      - name: Verify and execute exact A1 V3 on Windows
+        shell: pwsh
+        run: |
+          python ci/windows_a1_v3_test.py
