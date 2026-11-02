@@ -63,17 +63,7 @@ jobs:
           Set-Content -LiteralPath (Join-Path $repo 'deployment\template.yaml') -Value 'Resources: {}'
           Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value "*.secret`nignored/`n"
 
-          $longPy = @'
-import os, sys
-repo = os.path.abspath(sys.argv[1])
-p = os.path.join(repo, "stoix_platform", "a"*80, "b"*80, "c"*80)
-xp = "\\\\?\\" + p
-os.makedirs(xp, exist_ok=True)
-with open(os.path.join(xp, "long.py"), "w", encoding="utf-8") as f:
-    f.write("x=1\n")
-print("LONG_PATH_LEN=" + str(len(os.path.join(p, "long.py"))))
-'@
-          python -c $longPy $repo
+          python -c 'import os,sys; repo=os.path.abspath(sys.argv[1]); p=os.path.join(repo,"stoix_platform","a"*80,"b"*80,"c"*80); xp="\\\\?\\"+p; os.makedirs(xp,exist_ok=True); open(os.path.join(xp,"long.py"),"w",encoding="utf-8").write("x=1\\n"); print("LONG_PATH_LEN="+str(len(os.path.join(p,"long.py"))))' $repo
           if ($LASTEXITCODE -ne 0) { throw 'LONG_PATH_CREATE_FAILED' }
 
           git -C $repo -c protocol.file.allow=always submodule add $sub vendor/sub
