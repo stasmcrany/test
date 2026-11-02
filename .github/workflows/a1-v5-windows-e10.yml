@@ -116,6 +116,110 @@ jobs:
           path: ${{ runner.temp }}\a1-v5-windows-e10\LOCAL_MAIN_CAPTURE_MANIFEST.json
 
 
+  self-hosted-windows-e10:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify frozen runner identity
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $runner = Join-Path $env:GITHUB_WORKSPACE 'A1_CAPTURE_LOCAL_MAIN_READONLY_V5.py'
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $runner).Hash
+          $expected = 'D8D1E822B04FA6D267B2D9CE5DA79EE2198A97798E2037D73408D502A67E0C71'
+          Write-Host "RUNNER_SHA256=$actual"
+          if ($actual -ne $expected) { throw "RUNNER_SHA_MISMATCH" }
+
+      - name: Execute Windows target integration
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'a1-v5-windows-e10'
+          if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          $sub = Join-Path $root 'subrepo'
+          $repo = Join-Path $root 'repo'
+          $wt = Join-Path $root 'wt'
+          $out = Join-Path $root 'LOCAL_MAIN_CAPTURE_MANIFEST.json'
+          New-Item -ItemType Directory -Force -Path $sub,$repo | Out-Null
+
+          git -C $sub init
+          git -C $sub config user.email 'sub@example.com'
+          git -C $sub config user.name 'Sub'
+          Set-Content -LiteralPath (Join-Path $sub 'sub.txt') -Value 'submodule'
+          git -C $sub add .
+          git -C $sub commit -m 'sub'
+
+          git -C $repo init
+          git -C $repo config user.email 'main@example.com'
+          git -C $repo config user.name 'Main'
+          git -C $repo config core.longpaths true
+          git -C $repo remote add origin 'https://fake-token@example.invalid/owner/repo.git'
+
+          foreach ($d in @('Bunker','deployment','stoix_platform','tests','validation')) {
+            New-Item -ItemType Directory -Force -Path (Join-Path $repo $d) | Out-Null
+          }
+          Set-Content -LiteralPath (Join-Path $repo 'Bunker\tracked.py') -Value "x=1"
+          Set-Content -LiteralPath (Join-Path $repo 'deployment\template.yaml') -Value 'Resources: {}'
+          Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value "*.secret`nignored/`n"
+
+          python -c 'import os,sys; repo=os.path.abspath(sys.argv[1]); p=os.path.join(repo,"stoix_platform","a"*80,"b"*80,"c"*80); xp="\\\\?\\"+p; os.makedirs(xp,exist_ok=True); open(os.path.join(xp,"long.py"),"w",encoding="utf-8").write("x=1\\n"); print("LONG_PATH_LEN="+str(len(os.path.join(p,"long.py"))))' $repo
+          if ($LASTEXITCODE -ne 0) { throw 'LONG_PATH_CREATE_FAILED' }
+
+          git -C $repo -c protocol.file.allow=always submodule add $sub vendor/sub
+          git -C $repo add .
+          git -C $repo commit -m 'baseline'
+          git -C $repo worktree add -b extra $wt HEAD
+
+          Set-Content -LiteralPath (Join-Path $repo 'Bunker\tracked.py') -Value "x=2"
+          Set-Content -LiteralPath (Join-Path $repo 'Bunker\local.py') -Value "LOCAL=1"
+          Set-Content -LiteralPath (Join-Path $repo 'Bunker\x.secret') -Value "dummy"
+          New-Item -ItemType Directory -Force -Path (Join-Path $repo 'ignored') | Out-Null
+          Set-Content -LiteralPath (Join-Path $repo 'ignored\ignored.txt') -Value "ignored"
+          New-Item -ItemType Directory -Force -Path (Join-Path $repo 'build') | Out-Null
+          Set-Content -LiteralPath (Join-Path $repo 'build\only.txt') -Value "build-only"
+          New-Item -ItemType Junction -Path (Join-Path $repo 'dep_junction') -Target (Join-Path $repo 'deployment') | Out-Null
+
+          $runner = Join-Path $env:GITHUB_WORKSPACE 'A1_CAPTURE_LOCAL_MAIN_READONLY_V5.py'
+          python $runner --repo $repo --output $out
+          if ($LASTEXITCODE -ne 0) { throw "A1_V5_RUN_FAILED" }
+
+          $j = Get-Content -LiteralPath $out -Raw | ConvertFrom-Json
+          if (-not $j.a1_capture_complete) { throw 'CAPTURE_NOT_COMPLETE' }
+          if (-not $j.mutation_proof.all_readonly_invariants_hold) { throw 'READONLY_INVARIANT_FAIL' }
+          if (-not ($j.git_inventory.ignored -contains 'Bunker/x.secret')) { throw 'IGNORED_MISSING' }
+          if (-not (($j.git_inventory.submodule_status_lines -join "`n") -match 'vendor/sub')) { throw 'SUBMODULE_MISSING' }
+          if (-not (($j.git_inventory.worktree_porcelain_lines -join "`n") -match [regex]::Escape($wt))) { throw 'WORKTREE_MISSING' }
+          if (-not (($j.git_inventory.source_resolution_git_config -join "`n") -match 'core\.longpaths')) { throw 'CONFIG_MISSING' }
+          if (-not (($j.git_inventory.remotes_sanitized -join "`n") -match '<REDACTED_USERINFO>@')) { throw 'REMOTE_REDACTION_FAIL' }
+          if (-not ($j.local_only.files_under_candidate_product_roots -contains 'build/only.txt')) { throw 'LOCAL_ONLY_MISSING' }
+          if (-not (($j.filesystem_inventory.files -join "`n") -match 'long\.py$')) { throw 'LONG_PATH_NOT_IN_FS_INVENTORY' }
+          if (-not (($j.filesystem_inventory.redirects | Where-Object { $_.path -eq 'dep_junction' }).Count -ge 1)) { throw 'JUNCTION_NOT_DETECTED' }
+          if ($j.filesystem_inventory.error_count -ne 0) { throw 'FILESYSTEM_ERRORS' }
+
+          $negErr = Join-Path $root 'negative.stderr.txt'
+          python $runner --repo $repo --output (Join-Path $repo 'BAD.json') 2> $negErr
+          if ($LASTEXITCODE -ne 1) { throw 'NEGATIVE_GATE_WRONG_RC' }
+          if (-not ((Get-Content -LiteralPath $negErr -Raw) -match 'REFUSE_OUTPUT_INSIDE_REPOSITORY')) { throw 'NEGATIVE_GATE_MESSAGE_MISSING' }
+
+          Write-Host 'A1_V5_WINDOWS_E10=PASS'
+          Write-Host "MANIFEST=$out"
+          Write-Host "MANIFEST_SHA256=$((Get-FileHash -Algorithm SHA256 -LiteralPath $out).Hash)"
+
+      - name: Upload Windows E10 manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: a1-v5-windows-e10-manifest
+          path: ${{ runner.temp }}\a1-v5-windows-e10\LOCAL_MAIN_CAPTURE_MANIFEST.json
+
+
   ubuntu-probe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
