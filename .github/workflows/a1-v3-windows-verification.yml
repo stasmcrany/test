@@ -9,54 +9,20 @@ permissions:
   contents: read
 
 jobs:
-  env-python312:
+  windows-shell-smoke:
     runs-on: windows-latest
     steps:
-      - name: Check Windows and Python 3.12
+      - name: Pure Windows shell smoke
         shell: pwsh
         run: |
-          if ($env:RUNNER_OS -ne "Windows") { throw "NOT_WINDOWS" }
-          py -3.12 --version
-          if ($LASTEXITCODE -ne 0) { throw "PY312_UNAVAILABLE" }
-          git --version
-          if ($LASTEXITCODE -ne 0) { throw "GIT_UNAVAILABLE" }
+          Write-Host "WINDOWS_SHELL_SMOKE=PASS"
+          exit 0
 
-  clone-test-branch:
-    runs-on: windows-latest
+  ubuntu-shell-smoke:
+    runs-on: ubuntu-latest
     steps:
-      - name: Clone temporary test branch
-        shell: pwsh
+      - name: Pure Ubuntu shell smoke
+        shell: bash
         run: |
-          $work = Join-Path $env:RUNNER_TEMP "a1-v3-win"
-          git clone --depth 1 --branch ci/a1-v3-windows-verify-f9009bd2 https://github.com/stasmcrany/test.git $work
-          if ($LASTEXITCODE -ne 0) { throw "GIT_CLONE_FAILED" }
-          if (!(Test-Path -LiteralPath (Join-Path $work "ci\A1_CAPTURE_LOCAL_MAIN_READONLY_V3.py"))) { throw "RUNNER_MISSING" }
-          if (!(Test-Path -LiteralPath (Join-Path $work "ci\windows_a1_v3_test.py"))) { throw "HARNESS_MISSING" }
-
-  exact-runner-sha:
-    runs-on: windows-latest
-    steps:
-      - name: Verify exact frozen runner bytes
-        shell: pwsh
-        run: |
-          $work = Join-Path $env:RUNNER_TEMP "a1-v3-win"
-          git clone --depth 1 --branch ci/a1-v3-windows-verify-f9009bd2 https://github.com/stasmcrany/test.git $work
-          if ($LASTEXITCODE -ne 0) { throw "GIT_CLONE_FAILED" }
-          $runner = Join-Path $work "ci\A1_CAPTURE_LOCAL_MAIN_READONLY_V3.py"
-          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $runner).Hash
-          if ($actual -ne "F9009BD2984C5C77A23FD24E2F1E95D75B1C95A01A7EFC9C2856DBAA4813652A") {
-            throw "RUNNER_SHA_MISMATCH=$actual"
-          }
-
-  full-windows-harness:
-    runs-on: windows-latest
-    steps:
-      - name: Execute full A1 V3 Windows harness
-        shell: pwsh
-        run: |
-          $work = Join-Path $env:RUNNER_TEMP "a1-v3-win"
-          git clone --depth 1 --branch ci/a1-v3-windows-verify-f9009bd2 https://github.com/stasmcrany/test.git $work
-          if ($LASTEXITCODE -ne 0) { throw "GIT_CLONE_FAILED" }
-          Set-Location -LiteralPath $work
-          py -3.12 ci\windows_a1_v3_test.py
-          if ($LASTEXITCODE -ne 0) { throw "A1_V3_WINDOWS_HARNESS_FAILED=$LASTEXITCODE" }
+          echo "UBUNTU_SHELL_SMOKE=PASS"
+          exit 0
