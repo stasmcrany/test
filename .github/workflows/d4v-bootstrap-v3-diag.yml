@@ -1,0 +1,21 @@
+name: D4V Portable Bootstrap V3 Diagnostic
+on:
+  push:
+    branches:
+      - chatgpt-d4v-runtime-bootstrap-v3-diag-20261110
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker pull python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+      - name: Run bootstrap v3 diagnostic
+        run: |
+          docker run --rm --network=none --read-only --cap-drop=ALL \
+            --security-opt=no-new-privileges \
+            --tmpfs /tmp:rw,exec,nosuid,size=1073741824 \
+            --cap-add SYS_CHROOT --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+            --mount type=bind,source="$PWD/.ci/d4v_bootstrap_v3_diag.py",target=/diag.py,readonly \
+            --entrypoint python \
+            python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b \
+            -B /diag.py
