@@ -12,84 +12,84 @@ jobs:
         shell: pwsh
         run: |
           $py=@'
-import base64, gzip, hashlib, pathlib, re
-
-wf = pathlib.Path(".github/workflows/d4t-seed-custody-exact.yml").read_text(encoding="utf-8")
-m = re.search(r"\$b64=(.*?)(?:\r?\n)\s*\$gz=", wf, re.S)
-if not m:
-    raise SystemExit("OLD_RUNNER_B64_BLOCK_NOT_FOUND")
-parts = re.findall(r"'([^']*)'", m.group(1))
-if not parts:
-    raise SystemExit("OLD_RUNNER_B64_PARTS_NOT_FOUND")
-old = gzip.decompress(base64.b64decode("".join(parts)))
-old_sha = hashlib.sha256(old).hexdigest()
-if old_sha != "00c1c8951767c5a7bc3f5d0899d3b113bbb5b3f7b9c155cc27229300e9638018":
-    raise SystemExit("OLD_RUNNER_HASH_MISMATCH::" + old_sha)
-
-s = old.decode("utf-8")
-s = s.replace(
-    '$SmokeVerificationJson += "`n"\n',
-    '$SmokeVerificationJson += "`n"\n$script:D4TPhase=\'INIT\'\n',
-    1,
-)
-
-repls = [
-("    Require-Condition (-not (Test-Path -LiteralPath $receiptPath)) 'D4T_RECEIPT_ALREADY_EXISTS'\n",
- "    Require-Condition (-not (Test-Path -LiteralPath $receiptPath)) 'D4T_RECEIPT_ALREADY_EXISTS'\n    $script:D4TPhase='PATH_ABSENCE_CHECKS_PASS'\n"),
-("    Assert-NoReparseChain $EvidenceDir\n",
- "    Assert-NoReparseChain $EvidenceDir\n    $script:D4TPhase='PATH_AND_REPARSE_PREFLIGHT_PASS'\n"),
-("    $evidenceDirAcl=Set-And-VerifyCustodyAcl $EvidenceDir $true\n",
- "    $evidenceDirAcl=Set-And-VerifyCustodyAcl $EvidenceDir $true\n    $script:D4TPhase='ACL_PREFLIGHT_PASS'\n"),
-("    Require-Condition ([bool]$smoke.durable_receipt.post_teardown_independent_bucket_readback_sha256_verified) 'D4T_SMOKE_REREAD_REQUIRED'\n",
- "    Require-Condition ([bool]$smoke.durable_receipt.post_teardown_independent_bucket_readback_sha256_verified) 'D4T_SMOKE_REREAD_REQUIRED'\n    $script:D4TPhase='SMOKE_BINDING_PREFLIGHT_PASS'\n    Write-Output 'D4T_PREFLIGHT_STATUS=PASS'\n"),
-('    Write-NewUtf8 $startPath (($start|ConvertTo-Json -Depth 8 -Compress)+"`n")\n',
- '    Write-NewUtf8 $startPath (($start|ConvertTo-Json -Depth 8 -Compress)+"`n")\n    $script:D4TPhase=\'CEREMONY_MARKER_WRITTEN\'\n'),
-("        [Security.Cryptography.RandomNumberGenerator]::Fill($seed)\n",
- "        [Security.Cryptography.RandomNumberGenerator]::Fill($seed)\n        $script:D4TPhase='SEED_GENERATED'\n"),
-("        Write-NewBytes $PrimaryPath $primaryCipher\n",
- "        Write-NewBytes $PrimaryPath $primaryCipher\n        $script:D4TPhase='PRIMARY_WRITTEN'\n"),
-("        Write-NewBytes $BackupPath $backupCipher\n",
- "        Write-NewBytes $BackupPath $backupCipher\n        $script:D4TPhase='BACKUP_WRITTEN'\n"),
-('        Write-NewUtf8 $receiptPath (($receipt|ConvertTo-Json -Depth 16 -Compress)+"`n")\n',
- '        Write-NewUtf8 $receiptPath (($receipt|ConvertTo-Json -Depth 16 -Compress)+"`n")\n        $script:D4TPhase=\'RECEIPT_WRITTEN\'\n'),
-]
-for a,b in repls:
-    if a not in s:
-        raise SystemExit("PATCH_ANCHOR_NOT_FOUND::" + a[:80])
-    s=s.replace(a,b,1)
-
-old_catch="""}catch{
-    if(-not ($_.Exception.Message -like 'D4T_*')){
-        Write-Output ('D4T_FATAL_ERROR='+$_.Exception.Message)
-    }
-    exit 2
-}
-"""
-new_catch="""}catch{
-    Write-Output 'D4T_SEED_CUSTODY_STATUS=FAIL'
-    Write-Output ('D4T_FAILURE_PHASE='+$script:D4TPhase)
-    Write-Output ('D4T_ERROR='+$_.Exception.Message)
-    Write-Output 'D4T_SEED_REGENERATION_ALLOWED=NO_IF_MARKER_OR_SEED_WAS_CREATED'
-    exit 2
-}
-"""
-if old_catch not in s:
-    raise SystemExit("OUTER_CATCH_ANCHOR_NOT_FOUND")
-s=s.replace(old_catch,new_catch,1)
-
-new=s.encode("utf-8")
-new_sha=hashlib.sha256(new).hexdigest()
-if new_sha != "34520d651124bc98c7d66b9b121677cf9cfb5fe351c44d23dcad90b73e8367f2":
-    raise SystemExit("V2_HASH_MISMATCH::" + new_sha)
-
-downloads=pathlib.Path.home()/"Downloads"
-downloads.mkdir(parents=True,exist_ok=True)
-out=downloads/"D4T_SEED_CUSTODY_V2.ps1"
-out.write_bytes(new)
-print("OLD_EXACT_SHA256="+old_sha)
-print("EXACT_V2_SHA256="+new_sha)
-print("EXACT_V2_PATH="+str(out))
-'@
+          import base64, gzip, hashlib, pathlib, re
+          
+          wf = pathlib.Path(".github/workflows/d4t-seed-custody-exact.yml").read_text(encoding="utf-8")
+          m = re.search(r"\$b64=(.*?)(?:\r?\n)\s*\$gz=", wf, re.S)
+          if not m:
+              raise SystemExit("OLD_RUNNER_B64_BLOCK_NOT_FOUND")
+          parts = re.findall(r"'([^']*)'", m.group(1))
+          if not parts:
+              raise SystemExit("OLD_RUNNER_B64_PARTS_NOT_FOUND")
+          old = gzip.decompress(base64.b64decode("".join(parts)))
+          old_sha = hashlib.sha256(old).hexdigest()
+          if old_sha != "00c1c8951767c5a7bc3f5d0899d3b113bbb5b3f7b9c155cc27229300e9638018":
+              raise SystemExit("OLD_RUNNER_HASH_MISMATCH::" + old_sha)
+          
+          s = old.decode("utf-8")
+          s = s.replace(
+              '$SmokeVerificationJson += "`n"\n',
+              '$SmokeVerificationJson += "`n"\n$script:D4TPhase=\'INIT\'\n',
+              1,
+          )
+          
+          repls = [
+          ("    Require-Condition (-not (Test-Path -LiteralPath $receiptPath)) 'D4T_RECEIPT_ALREADY_EXISTS'\n",
+           "    Require-Condition (-not (Test-Path -LiteralPath $receiptPath)) 'D4T_RECEIPT_ALREADY_EXISTS'\n    $script:D4TPhase='PATH_ABSENCE_CHECKS_PASS'\n"),
+          ("    Assert-NoReparseChain $EvidenceDir\n",
+           "    Assert-NoReparseChain $EvidenceDir\n    $script:D4TPhase='PATH_AND_REPARSE_PREFLIGHT_PASS'\n"),
+          ("    $evidenceDirAcl=Set-And-VerifyCustodyAcl $EvidenceDir $true\n",
+           "    $evidenceDirAcl=Set-And-VerifyCustodyAcl $EvidenceDir $true\n    $script:D4TPhase='ACL_PREFLIGHT_PASS'\n"),
+          ("    Require-Condition ([bool]$smoke.durable_receipt.post_teardown_independent_bucket_readback_sha256_verified) 'D4T_SMOKE_REREAD_REQUIRED'\n",
+           "    Require-Condition ([bool]$smoke.durable_receipt.post_teardown_independent_bucket_readback_sha256_verified) 'D4T_SMOKE_REREAD_REQUIRED'\n    $script:D4TPhase='SMOKE_BINDING_PREFLIGHT_PASS'\n    Write-Output 'D4T_PREFLIGHT_STATUS=PASS'\n"),
+          ('    Write-NewUtf8 $startPath (($start|ConvertTo-Json -Depth 8 -Compress)+"`n")\n',
+           '    Write-NewUtf8 $startPath (($start|ConvertTo-Json -Depth 8 -Compress)+"`n")\n    $script:D4TPhase=\'CEREMONY_MARKER_WRITTEN\'\n'),
+          ("        [Security.Cryptography.RandomNumberGenerator]::Fill($seed)\n",
+           "        [Security.Cryptography.RandomNumberGenerator]::Fill($seed)\n        $script:D4TPhase='SEED_GENERATED'\n"),
+          ("        Write-NewBytes $PrimaryPath $primaryCipher\n",
+           "        Write-NewBytes $PrimaryPath $primaryCipher\n        $script:D4TPhase='PRIMARY_WRITTEN'\n"),
+          ("        Write-NewBytes $BackupPath $backupCipher\n",
+           "        Write-NewBytes $BackupPath $backupCipher\n        $script:D4TPhase='BACKUP_WRITTEN'\n"),
+          ('        Write-NewUtf8 $receiptPath (($receipt|ConvertTo-Json -Depth 16 -Compress)+"`n")\n',
+           '        Write-NewUtf8 $receiptPath (($receipt|ConvertTo-Json -Depth 16 -Compress)+"`n")\n        $script:D4TPhase=\'RECEIPT_WRITTEN\'\n'),
+          ]
+          for a,b in repls:
+              if a not in s:
+                  raise SystemExit("PATCH_ANCHOR_NOT_FOUND::" + a[:80])
+              s=s.replace(a,b,1)
+          
+          old_catch="""}catch{
+              if(-not ($_.Exception.Message -like 'D4T_*')){
+                  Write-Output ('D4T_FATAL_ERROR='+$_.Exception.Message)
+              }
+              exit 2
+          }
+          """
+          new_catch="""}catch{
+              Write-Output 'D4T_SEED_CUSTODY_STATUS=FAIL'
+              Write-Output ('D4T_FAILURE_PHASE='+$script:D4TPhase)
+              Write-Output ('D4T_ERROR='+$_.Exception.Message)
+              Write-Output 'D4T_SEED_REGENERATION_ALLOWED=NO_IF_MARKER_OR_SEED_WAS_CREATED'
+              exit 2
+          }
+          """
+          if old_catch not in s:
+              raise SystemExit("OUTER_CATCH_ANCHOR_NOT_FOUND")
+          s=s.replace(old_catch,new_catch,1)
+          
+          new=s.encode("utf-8")
+          new_sha=hashlib.sha256(new).hexdigest()
+          if new_sha != "34520d651124bc98c7d66b9b121677cf9cfb5fe351c44d23dcad90b73e8367f2":
+              raise SystemExit("V2_HASH_MISMATCH::" + new_sha)
+          
+          downloads=pathlib.Path.home()/"Downloads"
+          downloads.mkdir(parents=True,exist_ok=True)
+          out=downloads/"D4T_SEED_CUSTODY_V2.ps1"
+          out.write_bytes(new)
+          print("OLD_EXACT_SHA256="+old_sha)
+          print("EXACT_V2_SHA256="+new_sha)
+          print("EXACT_V2_PATH="+str(out))
+          '@
           $py | python -
           if($LASTEXITCODE -ne 0){throw "DETERMINISTIC_PATCH_EXIT::$LASTEXITCODE"}
       - name: Execute exact V2 self-test
