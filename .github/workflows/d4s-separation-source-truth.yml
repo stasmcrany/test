@@ -12,9 +12,9 @@ jobs:
         shell: pwsh
         run: |
           $blob=(git hash-object '.ci/D4S_DERIVATION_SEPARATION.ps1').Trim()
-          if($blob -ne '1ccdc1162f336ff06d584746d2b54c7aaa0033dc'){throw "GIT_BLOB_MISMATCH::$blob"}
+          if($blob -ne '0ba7bec0c3418f5494137d1fbcf032e2b7fb6cec'){throw "GIT_BLOB_MISMATCH::$blob"}
           $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/D4S_DERIVATION_SEPARATION.ps1').Hash.ToLowerInvariant()
-          "D4S_SOURCE_GIT_BLOB=1ccdc1162f336ff06d584746d2b54c7aaa0033dc"
+          "D4S_SOURCE_GIT_BLOB=0ba7bec0c3418f5494137d1fbcf032e2b7fb6cec"
           "D4S_SOURCE_SHA256=$sha"
       - name: Execute full exact self-test
         shell: pwsh
