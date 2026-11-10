@@ -1,0 +1,93 @@
+name: D4S Protocol Binding Exact Pair Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-binding-launcher-ci-base-20261110
+jobs:
+  exact-pair:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact PS file in Downloads
+        shell: pwsh
+        run: |
+          $b64=@'
+          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
+          '@
+          $gz=[Convert]::FromBase64String(($b64 -replace '\s',''))
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo); $bytes=$mo.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4S_PROTOCOL_BINDING.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '20b1d196ba7a6e19b06198071fb7209f3833ff2b66919f230131ab2e68272bda'){throw "HASH_MISMATCH::$actual"}
+            "PAIR_FILE_HASH=PASS::$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Execute exact launcher
+        shell: pwsh
+        env:
+          D4S_PROTOCOL_BINDING_SELFTEST: '1'
+        run: |
+          $h='20b1d196ba7a6e19b06198071fb7209f3833ff2b66919f230131ab2e68272bda'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4S_PROTOCOL_BINDING*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4S_PROTOCOL_BINDING_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER_EXIT::$LASTEXITCODE"}
