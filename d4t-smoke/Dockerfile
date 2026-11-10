@@ -1,0 +1,1 @@
+FROM oven/bun:1.2.21\nWORKDIR /app\nCOPY d4t_smoke_runner.js /app/d4t_smoke_runner.js\nCMD [\"bun\",\"/app/d4t_smoke_runner.js\"]\n
