@@ -19,4 +19,10 @@ jobs:
             for p in /opt/pyvenv/bin/python /usr/lib/python3.13 /usr/local/bin/python /usr/local/lib/python3.12 /lib/x86_64-linux-gnu/libseccomp.so.2; do
               if [ -e "$p" ]; then echo "PATH_EXISTS=$p"; else echo "PATH_MISSING=$p"; fi
             done
+            echo '--- PYTHON REALPATH ---'
+            readlink -f /usr/local/bin/python || true
+            echo '--- PYTHON LDD ---'
+            ldd /usr/local/bin/python || true
+            echo '--- LIBPYTHON ---'
+            ls -l /usr/local/lib/libpython* 2>/dev/null || true
           '
