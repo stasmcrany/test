@@ -1,0 +1,22 @@
+name: D4U Runtime Candidate Proof
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4u-runtime-proof-base-20261110
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prove immutable Python 3.12 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+          identity="$(docker image inspect python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b --format '{{.Id}} {{.Os}} {{.Architecture}}')"
+          echo "RUNTIME_IDENTITY=$identity"
+          test "$identity" = "sha256:78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db linux amd64"
+          out="$(docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b python -c 'import os,platform,sys; print("D4U_RUNTIME_PYTHON_VERSION="+platform.python_version()); print("D4U_RUNTIME_PYTHON_MAJOR_MINOR="+str(sys.version_info.major)+"."+str(sys.version_info.minor)); print("D4U_RUNTIME_PYTHON_EXECUTABLE="+sys.executable); print("D4U_RUNTIME_PLATFORM="+sys.platform); print("D4U_RUNTIME_OS_NAME="+os.name); assert sys.version_info[:2] == (3,12); assert sys.platform == "linux"; assert os.name == "posix"; print("D4U_RUNTIME_PYTHON_3_12=PASS")')"
+          printf '%s\n' "$out"
+          grep -Fx 'D4U_RUNTIME_PYTHON_3_12=PASS' <<<"$out"
+          grep -Fx 'D4U_RUNTIME_PLATFORM=linux' <<<"$out"
+          grep -Fx 'D4U_RUNTIME_OS_NAME=posix' <<<"$out"
