@@ -1,0 +1,75 @@
+name: D4T State Inspector Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4t-state-inspect-ci-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact file in Downloads
+        shell: pwsh
+        run: |
+          $b64=@'
+          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
+          74K9/QeUxKYkdiMAAA==
+          '@
+          $gz=[Convert]::FromBase64String(($b64 -replace '\s',''))
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo); $bytes=$mo.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4T_STATE_INSPECT.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '988cb7e1d55da7d50e82cf747b38340b81fc9b7ed3a07f21d404b0448288ce1b'){throw "HASH_MISMATCH::$actual"}
+            "EXACT_FILE_HASH=PASS::$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Exact script self-test
+        shell: pwsh
+        env:
+          D4T_STATE_INSPECT_SELFTEST: '1'
+        run: |
+          $h='988cb7e1d55da7d50e82cf747b38340b81fc9b7ed3a07f21d404b0448288ce1b'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_STATE_INSPECT*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_STATE_INSPECT_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
+      - name: Exact launcher read-only real-mode smoke
+        shell: pwsh
+        run: |
+          $h='988cb7e1d55da7d50e82cf747b38340b81fc9b7ed3a07f21d404b0448288ce1b'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_STATE_INSPECT*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_STATE_INSPECT_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "REALMODE_EXIT::$LASTEXITCODE"}
