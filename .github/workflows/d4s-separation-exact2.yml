@@ -1,0 +1,36 @@
+name: D4S Derivation Separation Reconstructed Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-separation-exact2-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact bytes
+        shell: pwsh
+        run: |
+          $b64=@'
+          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
+          '@
+          $gz=[Convert]::FromBase64String(($b64 -replace '\s',''))
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try{
+            $zs.CopyTo($mo);$bytes=$mo.ToArray()
+            $path=Join-Path $env:RUNNER_TEMP 'D4S_DERIVATION_SEPARATION.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '8f7df2fa20003f334193549a6f0c598a0cadca2524b35e0d97d5e9eb47f6e640'){throw "HASH_MISMATCH::$actual"}
+            "EXACT_SCRIPT_SHA256=$actual"
+          }finally{
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Execute exact self-test
+        shell: pwsh
+        run: |
+          $path=Join-Path $env:RUNNER_TEMP 'D4S_DERIVATION_SEPARATION.ps1'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
