@@ -11,15 +11,30 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Verify exact runner bytes
+      - name: Reconstruct exact runner bytes
         shell: pwsh
         run: |
-          $expected='8e78219ae96bce21650e6851cf4ba8087b6d865ac2141741a2d8cc201606a95c'
-          $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/D4S_PREQUALIFY.ps1').Hash.ToLowerInvariant()
-          if($actual -ne $expected){throw "HASH_MISMATCH::$actual"}
-          "EXACT_RUNNER_SHA256=$actual"
+          $b64=(Get-Content -LiteralPath '.ci/prequalify_gz_b64_0.txt' -Raw)+(Get-Content -LiteralPath '.ci/prequalify_gz_b64_1.txt' -Raw)+(Get-Content -LiteralPath '.ci/prequalify_gz_b64_2.txt' -Raw)
+          $gz=[Convert]::FromBase64String(($b64 -replace '\s',''))
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo)
+            $bytes=$mo.ToArray()
+            $path=Join-Path $env:RUNNER_TEMP 'D4S_PREQUALIFY.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $expected='8e78219ae96bce21650e6851cf4ba8087b6d865ac2141741a2d8cc201606a95c'
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne $expected){throw "HASH_MISMATCH::$actual"}
+            "EXACT_RUNNER_SHA256=$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
       - name: Execute exact Windows plumbing self-test
         shell: pwsh
         run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4S_PREQUALIFY.ps1' -PlumbingSelfTest
+          $path=Join-Path $env:RUNNER_TEMP 'D4S_PREQUALIFY.ps1'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -PlumbingSelfTest
           if($LASTEXITCODE -ne 0){throw "PLUMBING_EXIT::$LASTEXITCODE"}
