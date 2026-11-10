@@ -95,7 +95,7 @@ jobs:
               def preexec():
                   install_seccomp(); limits(); os.chroot(root); os.chdir("/scratch")
                   os.setgroups([]); os.setgid(NOBODY_GID); os.setuid(NOBODY_UID); os.umask(0o077)
-              env={"PATH":"/usr/local/bin:/usr/bin","PYTHONHOME":prefix,"PYTHONDONTWRITEBYTECODE":"1","LANG":"C.UTF-8"}
+              env={"PATH":"/usr/local/bin:/usr/bin","PYTHONHOME":prefix,"LD_LIBRARY_PATH":"/usr/local/lib","PYTHONDONTWRITEBYTECODE":"1","LANG":"C.UTF-8"}
               cp=subprocess.run([py_inside,"-I","/candidate/probe.py"],text=True,capture_output=True,timeout=5.0,env=env,preexec_fn=preexec)
               print("D4V_SANDBOX_RETURN_CODE="+str(cp.returncode))
               print("D4V_SANDBOX_STDOUT="+cp.stdout.strip())
