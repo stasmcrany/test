@@ -1,0 +1,38 @@
+name: D4W Protocol Binding Exact Qualification
+on:
+  pull_request:
+    branches: [chatgpt-d4w-protocol-binding-base-20261110]
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exact SHA and parse
+        shell: pwsh
+        run: |
+          $p='.ci/D4W_PROTOCOL_BINDING.ps1'
+          $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          if($h -ne 'bb9093f5b11a3988fc40d855133cf1dd27615f97b6d0ddd3ebc661cd6b212c44'){throw "HASH::$h"}
+          "EXACT_SHA=$h"
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count -ne 0){throw ("PARSE::"+($errors|ForEach-Object{$_.Message}-join '|'))}
+          "POWERSHELL_PARSE=PASS"
+      - name: Exact Windows selftest
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4W_PROTOCOL_BINDING.ps1' -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST::$LASTEXITCODE"}
+      - name: Exact final launcher under selftest gate
+        shell: pwsh
+        env:
+          D4W_PROTOCOL_BINDING_SELFTEST: '1'
+        run: |
+          $h='bb9093f5b11a3988fc40d855133cf1dd27615f97b6d0ddd3ebc661cd6b212c44'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item '.ci/D4W_PROTOCOL_BINDING.ps1' (Join-Path $downloads 'D4W_PROTOCOL_BINDING.ps1') -Force
+          $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4W_PROTOCOL_BINDING*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
+          if(-not $f){throw 'D4W_PROTOCOL_BINDING_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER::$LASTEXITCODE"}
