@@ -134,3 +134,4 @@ jobs:
             [Array]::Clear($launcherBytes,0,$launcherBytes.Length)
             Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
           }
+          $global:LASTEXITCODE = 0
