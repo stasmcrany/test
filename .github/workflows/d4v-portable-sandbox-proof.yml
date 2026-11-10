@@ -1,0 +1,116 @@
+name: D4V Portable Python312 Sandbox Proof
+on:
+  pull_request:
+    branches: [chatgpt-d4v-portable-sandbox-proof-base-20261110]
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Prove portable chroot sandbox on exact immutable Python312 image
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > portable_sandbox_test.py <<'PY'
+          from __future__ import annotations
+          import ctypes, errno, hashlib, os, pathlib, resource, shutil, subprocess, sys, sysconfig, tempfile
+
+          NOBODY_UID=65534
+          NOBODY_GID=65534
+
+          def sha256_bytes(b:bytes)->str:
+              return hashlib.sha256(b).hexdigest()
+
+          def copy_file(src:pathlib.Path,dst:pathlib.Path,mode:int=0o555):
+              dst.parent.mkdir(parents=True,exist_ok=True)
+              shutil.copy2(src,dst)
+              os.chmod(dst,mode)
+
+          def copy_runtime(root:pathlib.Path):
+              py=pathlib.Path(sys.executable).resolve()
+              stdlib=pathlib.Path(sysconfig.get_paths()["stdlib"]).resolve()
+              prefix=pathlib.Path(sys.prefix).resolve()
+              libdir=pathlib.Path(sysconfig.get_config_var("LIBDIR")).resolve()
+              ldlib=sysconfig.get_config_var("LDLIBRARY")
+              assert py == pathlib.Path("/usr/local/bin/python3.12")
+              assert stdlib == pathlib.Path("/usr/local/lib/python3.12")
+              assert prefix == pathlib.Path("/usr/local")
+              copy_file(py,root/py.relative_to("/"),0o555)
+              shutil.copytree(stdlib,root/stdlib.relative_to("/"),dirs_exist_ok=True,ignore=shutil.ignore_patterns("__pycache__","site-packages"))
+              for p in (root/stdlib.relative_to("/")).rglob("*"):
+                  try: os.chmod(p,0o555 if p.is_dir() else 0o444)
+                  except FileNotFoundError: pass
+              if ldlib:
+                  lp=(libdir/ldlib).resolve()
+                  copy_file(lp,root/lp.relative_to("/"),0o555)
+              for src in (
+                  pathlib.Path("/lib/x86_64-linux-gnu/libm.so.6"),
+                  pathlib.Path("/lib/x86_64-linux-gnu/libz.so.1"),
+                  pathlib.Path("/lib/x86_64-linux-gnu/libexpat.so.1"),
+                  pathlib.Path("/lib/x86_64-linux-gnu/libc.so.6"),
+                  pathlib.Path("/lib64/ld-linux-x86-64.so.2"),
+                  pathlib.Path("/lib/x86_64-linux-gnu/libcrypto.so.3"),
+              ):
+                  if src.exists():
+                      copy_file(src,root/src.relative_to("/"),0o555)
+              return "/"+str(py.relative_to("/")),str(prefix)
+
+          def install_seccomp():
+              lib=ctypes.CDLL("libseccomp.so.2")
+              lib.seccomp_init.argtypes=[ctypes.c_uint32]; lib.seccomp_init.restype=ctypes.c_void_p
+              lib.seccomp_syscall_resolve_name.argtypes=[ctypes.c_char_p]; lib.seccomp_syscall_resolve_name.restype=ctypes.c_int
+              lib.seccomp_rule_add.argtypes=[ctypes.c_void_p,ctypes.c_uint32,ctypes.c_int,ctypes.c_uint32]; lib.seccomp_rule_add.restype=ctypes.c_int
+              lib.seccomp_load.argtypes=[ctypes.c_void_p]; lib.seccomp_load.restype=ctypes.c_int
+              lib.seccomp_release.argtypes=[ctypes.c_void_p]
+              allow=0x7fff0000; deny=0x00050000 | (errno.EPERM & 0xFFFF)
+              ctx=lib.seccomp_init(allow)
+              if not ctx: raise RuntimeError("seccomp_init")
+              try:
+                  for name in (b"socket",b"socketpair",b"connect",b"bind",b"listen",b"accept",b"accept4",b"sendto",b"recvfrom",b"sendmsg",b"recvmsg",b"ptrace",b"process_vm_readv",b"process_vm_writev",b"pidfd_getfd",b"fork",b"vfork",b"clone",b"clone3"):
+                      nr=lib.seccomp_syscall_resolve_name(name)
+                      if nr>=0:
+                          rc=lib.seccomp_rule_add(ctx,deny,nr,0)
+                          if rc!=0: raise RuntimeError(f"seccomp_rule::{name!r}::{rc}")
+                  rc=lib.seccomp_load(ctx)
+                  if rc!=0: raise RuntimeError(f"seccomp_load::{rc}")
+              finally:
+                  lib.seccomp_release(ctx)
+
+          def limits():
+              resource.setrlimit(resource.RLIMIT_CPU,(3,3))
+              resource.setrlimit(resource.RLIMIT_AS,(768*1024*1024,768*1024*1024))
+              resource.setrlimit(resource.RLIMIT_FSIZE,(16*1024*1024,16*1024*1024))
+              resource.setrlimit(resource.RLIMIT_NOFILE,(32,32))
+              try: resource.setrlimit(resource.RLIMIT_NPROC,(8,8))
+              except (ValueError,OSError): pass
+
+          base=pathlib.Path(tempfile.mkdtemp(prefix="d4v_sbox_"))
+          try:
+              root=base/"root"; root.mkdir()
+              py_inside,prefix=copy_runtime(root)
+              (root/"candidate").mkdir(); (root/"scratch").mkdir()
+              source='import hashlib,json,time; print(json.dumps({"ok":True,"sha":hashlib.sha256(b"x").hexdigest(),"t":time.monotonic_ns()>0},sort_keys=True))\n'
+              script=root/"candidate/probe.py"; script.write_text(source,encoding="utf-8")
+              os.chmod(script,0o444); os.chmod(root/"candidate",0o555)
+              os.chown(root/"scratch",NOBODY_UID,NOBODY_GID); os.chmod(root/"scratch",0o700)
+              def preexec():
+                  install_seccomp(); limits(); os.chroot(root); os.chdir("/scratch")
+                  os.setgroups([]); os.setgid(NOBODY_GID); os.setuid(NOBODY_UID); os.umask(0o077)
+              env={"PATH":"/usr/local/bin:/usr/bin","PYTHONHOME":prefix,"PYTHONDONTWRITEBYTECODE":"1","LANG":"C.UTF-8"}
+              cp=subprocess.run([py_inside,"-I","/candidate/probe.py"],text=True,capture_output=True,timeout=5.0,env=env,preexec_fn=preexec)
+              print("D4V_SANDBOX_RETURN_CODE="+str(cp.returncode))
+              print("D4V_SANDBOX_STDOUT="+cp.stdout.strip())
+              print("D4V_SANDBOX_STDERR="+cp.stderr.strip())
+              assert cp.returncode==0
+              assert '"ok": true' in cp.stdout
+              print("D4V_PORTABLE_SANDBOX_MINIMAL=PASS")
+          finally:
+              shutil.rmtree(base,ignore_errors=True)
+          PY
+
+          ref='python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b'
+          docker pull "$ref" >/dev/null
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges \
+            --tmpfs /tmp:rw,exec,nosuid,size=1073741824 \
+            --mount "type=bind,source=$PWD/portable_sandbox_test.py,target=/work/test.py,readonly" \
+            --cap-add SYS_CHROOT --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+            --entrypoint python "$ref" -B /work/test.py
