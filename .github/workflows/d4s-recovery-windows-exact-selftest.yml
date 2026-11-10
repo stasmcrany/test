@@ -1,0 +1,23 @@
+name: D4S Recovery Windows Exact Self-Test
+
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-public-ci-20261110
+
+jobs:
+  exact-windows-selftest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact recovery bytes
+        shell: pwsh
+        run: |
+          $expected='37e2ae1b5af7e93f78e2e0f6a2fd63c16768549218a6500799f79f57782dfe46'
+          $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/STOIX_VCFE_C1C2_D4S_SAME_SEED_CUSTODY_RECOVERY_FROZEN.ps1').Hash.ToLowerInvariant()
+          if($actual -ne $expected){ throw "HASH_MISMATCH::$actual" }
+          Write-Output "EXACT_SCRIPT_SHA256=$actual"
+      - name: Execute exact Windows self-test
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/STOIX_VCFE_C1C2_D4S_SAME_SEED_CUSTODY_RECOVERY_FROZEN.ps1' -SelfTest
