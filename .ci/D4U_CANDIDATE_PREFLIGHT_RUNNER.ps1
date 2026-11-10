@@ -4,7 +4,9 @@ $ErrorActionPreference='Stop'
 $StudyId='STOIX-VCFE-C1C2-D4U-FC-20261110-01'
 $CandidateZipSha='d7c29223180cbcba7ce4f3f51b399988e672ae47ce2ef5ed5198665571724266'
 $RuntimeRef='python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b'
-$RuntimeId='sha256:78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db'
+$RuntimeProofImageId='sha256:78976a69c067520ef8be34cde307ef9f6fea6dcefa50edb57039773d241ca0db'
+$RuntimeManifestDigest='sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b'
+$RunnerRevision='V2_MANIFEST_DIGEST_PORTABLE_IDENTITY'
 $Helper=@'
 import hashlib,json,os,sys
 from pathlib import Path
@@ -56,6 +58,28 @@ function Get-FileSha256Hex([string]$Path){
     try{return ([BitConverter]::ToString($sha.ComputeHash($b))).Replace('-','').ToLowerInvariant()}
     finally{$sha.Dispose();if($b){[Array]::Clear($b,0,$b.Length)}}
 }
+
+function Assert-RuntimeMetadata([object]$Image){
+    $id=[string]$Image.Id
+    $os=[string]$Image.Os
+    $arch=[string]$Image.Architecture
+    $digests=@($Image.RepoDigests|ForEach-Object{"$_"})
+    Require-Condition ($os -eq 'linux' -and $arch -eq 'amd64') "D4U_RUNTIME_PLATFORM_FAIL::$os::$arch"
+    Require-Condition ((@($digests|Where-Object{$_ -eq "python@$RuntimeManifestDigest"}).Count) -gt 0) 'D4U_RUNTIME_MANIFEST_DIGEST_FAIL'
+    Write-Output ('D4U_RUNTIME_LOCAL_IMAGE_ID='+$id)
+    Write-Output ('D4U_RUNTIME_MANIFEST_DIGEST='+$RuntimeManifestDigest)
+    Write-Output ('D4U_RUNTIME_PROOF_IMAGE_ID_MATCH='+$(if($id -eq $RuntimeProofImageId){'PASS'}else{'INFO_MISMATCH_ALLOWED'}))
+    Write-Output 'D4U_RUNTIME_MANIFEST_DIGEST_MATCH=PASS'
+    Write-Output 'D4U_RUNTIME_PLATFORM_MATCH=PASS'
+}
+
+function Assert-RuntimePython([string[]]$Lines){
+    $text=$Lines -join "`n"
+    Require-Condition (($text -split "`n") -contains 'D4U_RUNTIME_PYTHON_MAJOR_MINOR=3.12') 'D4U_RUNTIME_PYTHON_3_12_FAIL'
+    Require-Condition (($text -split "`n") -contains 'D4U_RUNTIME_PLATFORM=linux') 'D4U_RUNTIME_PYTHON_PLATFORM_FAIL'
+    Require-Condition (($text -split "`n") -contains 'D4U_RUNTIME_OS_NAME=posix') 'D4U_RUNTIME_PYTHON_OS_FAIL'
+}
+
 function Assert-Markers([string[]]$Lines){
     $text=$Lines -join "`n"
     foreach($m in @(
@@ -94,11 +118,40 @@ if($SelfTest -or $env:D4U_CANDIDATE_PREFLIGHT_SELFTEST -eq '1'){
         'D4U_CANDIDATE_PREFLIGHT_SCIENTIFIC_EXECUTIONS=0'
     )
     Assert-Markers $fake
+
+    $targetStyle=[pscustomobject]@{
+        Id=$RuntimeManifestDigest
+        Os='linux'
+        Architecture='amd64'
+        RepoDigests=@("python@$RuntimeManifestDigest")
+    }
+    $metaLines=@(Assert-RuntimeMetadata $targetStyle)
+    Require-Condition (($metaLines -contains 'D4U_RUNTIME_PROOF_IMAGE_ID_MATCH=INFO_MISMATCH_ALLOWED')) 'D4U_SELFTEST_TARGET_STORE_ID_CLASSIFICATION'
+    Require-Condition (($metaLines -contains 'D4U_RUNTIME_MANIFEST_DIGEST_MATCH=PASS')) 'D4U_SELFTEST_MANIFEST_DIGEST'
+
+    Assert-RuntimePython @(
+        'D4U_RUNTIME_PYTHON_VERSION=3.12.16',
+        'D4U_RUNTIME_PYTHON_MAJOR_MINOR=3.12',
+        'D4U_RUNTIME_PLATFORM=linux',
+        'D4U_RUNTIME_OS_NAME=posix'
+    )
+
     $negative=$false
     try{Assert-Markers @('Usage: docker [OPTIONS] COMMAND')}catch{if($_.Exception.Message -like 'D4U_PREFLIGHT_MARKER_MISSING::*'){$negative=$true}else{throw}}
     Require-Condition $negative 'D4U_SELFTEST_FALSE_PASS_NOT_BLOCKED'
+
+    $negativeDigest=$false
+    try{
+        Assert-RuntimeMetadata ([pscustomobject]@{Id='sha256:x';Os='linux';Architecture='amd64';RepoDigests=@('python@sha256:wrong')})
+    }catch{
+        if($_.Exception.Message -eq 'D4U_RUNTIME_MANIFEST_DIGEST_FAIL'){$negativeDigest=$true}else{throw}
+    }
+    Require-Condition $negativeDigest 'D4U_SELFTEST_MANIFEST_NEGATIVE_NOT_BLOCKED'
+
     Require-Condition ($Helper.Length -gt 1000) 'D4U_SELFTEST_HELPER'
     Write-Output 'D4U_CANDIDATE_PREFLIGHT_WINDOWS_SELFTEST=PASS'
+    Write-Output 'D4U_CANDIDATE_PREFLIGHT_TARGET_STORE_ID_SCENARIO=PASS'
+    Write-Output 'D4U_CANDIDATE_PREFLIGHT_MANIFEST_NEGATIVE_BOUNDARY=PASS'
     Write-Output 'D4U_CANDIDATE_PREFLIGHT_FALSE_PASS_GUARD=PASS'
     exit 0
 }
@@ -120,9 +173,20 @@ try{
 
     & docker pull $RuntimeRef | Out-Host
     Require-Condition ($LASTEXITCODE -eq 0) 'D4U_RUNTIME_PULL_FAIL'
-    $identity=@(& docker image inspect --format '{{.Id}} {{.Os}} {{.Architecture}}' $RuntimeRef 2>&1 | ForEach-Object{"$_"})
+
+    $inspectLines=@(& docker image inspect $RuntimeRef 2>&1 | ForEach-Object{"$_"})
     Require-Condition ($LASTEXITCODE -eq 0) 'D4U_RUNTIME_INSPECT_FAIL'
-    Require-Condition (($identity -join "`n").Trim() -eq "$RuntimeId linux amd64") 'D4U_RUNTIME_IDENTITY_FAIL'
+    $inspectDoc=($inspectLines -join "`n")|ConvertFrom-Json
+    Require-Condition (@($inspectDoc).Count -eq 1) 'D4U_RUNTIME_INSPECT_OBJECT_COUNT'
+    Assert-RuntimeMetadata @($inspectDoc)[0]
+
+    $runtimeProbe=@(& docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges $RuntimeRef python -c 'import os,platform,sys;print("D4U_RUNTIME_PYTHON_VERSION="+platform.python_version());print("D4U_RUNTIME_PYTHON_MAJOR_MINOR="+str(sys.version_info.major)+"."+str(sys.version_info.minor));print("D4U_RUNTIME_PLATFORM="+sys.platform);print("D4U_RUNTIME_OS_NAME="+os.name)' 2>&1 | ForEach-Object{"$_"})
+    $runtimeProbeExit=$LASTEXITCODE
+    foreach($line in $runtimeProbe){Write-Output $line}
+    Require-Condition ($runtimeProbeExit -eq 0) "D4U_RUNTIME_PYTHON_PROBE_EXIT::$runtimeProbeExit"
+    Assert-RuntimePython $runtimeProbe
+    Write-Output 'D4U_RUNTIME_PYTHON_3_12_MATCH=PASS'
+    Write-Output ('D4U_RUNNER_REVISION='+$RunnerRevision)
 
     $saved=@{}
     foreach($n in @('OPENAI_API_KEY','VCFE_MASTER_SEED_HEX','D3_MASTER_SEED_HEX','C1C2_MASTER_SEED_HEX')){
