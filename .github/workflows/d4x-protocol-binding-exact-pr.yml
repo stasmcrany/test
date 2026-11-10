@@ -1,0 +1,48 @@
+name: d4x-protocol-binding-exact-pr
+on:
+  pull_request:
+    branches:
+      - master
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact runner
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $b64=(Get-Content -LiteralPath 'ci/d4x_protocol_binding.ps1.gz.b64' -Raw).Trim()
+          $gz=[Convert]::FromBase64String($b64)
+          $ms=[IO.MemoryStream]::new(,$gz)
+          $gzs=[IO.Compression.GZipStream]::new($ms,[IO.Compression.CompressionMode]::Decompress)
+          $out=[IO.MemoryStream]::new()
+          $gzs.CopyTo($out)
+          $gzs.Dispose(); $ms.Dispose()
+          $bytes=$out.ToArray(); $out.Dispose()
+          [IO.File]::WriteAllBytes('D4X_PROTOCOL_BINDING.ps1',$bytes)
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath 'D4X_PROTOCOL_BINDING.ps1').Hash.ToLowerInvariant()
+          if($sha -ne '56d1d0b175134139ef806b2e26c95efcdb4d9e4e1e9f9d1996a55e12b3670da3'){throw "SHA::$sha"}
+          if($bytes.Length -ne 17219){throw "BYTES::$($bytes.Length)"}
+          Write-Output 'D4X_PROTOCOL_BINDING_CI_EXACT_SHA=PASS'
+          Write-Output 'D4X_PROTOCOL_BINDING_CI_EXACT_BYTES=PASS'
+      - name: Parse exact PowerShell
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          [void][ScriptBlock]::Create([IO.File]::ReadAllText((Resolve-Path 'D4X_PROTOCOL_BINDING.ps1')))
+          Write-Output 'D4X_PROTOCOL_BINDING_CI_PARSE=PASS'
+      - name: Run exact Windows selftest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File .\D4X_PROTOCOL_BINDING.ps1 -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
+          Write-Output 'D4X_PROTOCOL_BINDING_CI_SELFTEST=PASS'
+      - name: Verify exact bytes after selftest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath 'D4X_PROTOCOL_BINDING.ps1').Hash.ToLowerInvariant()
+          if($sha -ne '56d1d0b175134139ef806b2e26c95efcdb4d9e4e1e9f9d1996a55e12b3670da3'){throw "POST_SHA::$sha"}
+          Write-Output 'D4X_PROTOCOL_BINDING_CI_POST_SELFTEST_SHA=PASS'
