@@ -10,14 +10,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify exact frozen PS bytes
+      - name: Reconstruct exact frozen PS from Git blob
         shell: pwsh
         run: |
-          $p=Join-Path $env:GITHUB_WORKSPACE 'D4T_PQ_PREFLIGHT_V3.ps1'
-          if(-not (Test-Path -LiteralPath $p -PathType Leaf)){throw 'CI_FILE_MISSING'}
-          $bytes=[IO.File]::ReadAllBytes($p)
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          $dst=Join-Path $downloads 'D4T_PQ_PREFLIGHT_V3.ps1'
+          $psi=[Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName='git'
+          $psi.UseShellExecute=$false
+          $psi.RedirectStandardOutput=$true
+          $psi.RedirectStandardError=$true
+          foreach($a in @('cat-file','blob','7fe9441c9d63de275fcb97457a508127c6ccc4f7')){[void]$psi.ArgumentList.Add($a)}
+          $p=[Diagnostics.Process]::Start($psi)
+          try{
+            $fs=[IO.File]::Open($dst,[IO.FileMode]::Create,[IO.FileAccess]::Write,[IO.FileShare]::None)
+            try{$p.StandardOutput.BaseStream.CopyTo($fs);$fs.Flush($true)}finally{$fs.Dispose()}
+            $err=$p.StandardError.ReadToEnd()
+            $p.WaitForExit()
+            if($p.ExitCode -ne 0){throw "GIT_CAT_FILE_EXIT::$($p.ExitCode)::$err"}
+          }finally{$p.Dispose()}
+          $bytes=[IO.File]::ReadAllBytes($dst)
           if($bytes.Length -ne 11123){throw "CI_BYTES::$($bytes.Length)"}
-          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $dst).Hash.ToLowerInvariant()
           if($sha -ne '8ed9eb0d215efc849490c651004fd84817a5715bba36a721b208599952f54786'){throw "CI_SHA::$sha"}
           "D4T_PQ_PREFLIGHT_V3_EXACT_SHA256=$sha"
           "D4T_PQ_PREFLIGHT_V3_EXACT_BYTES=$($bytes.Length)"
@@ -25,7 +40,7 @@ jobs:
       - name: Parse exact PowerShell
         shell: pwsh
         run: |
-          $p=Join-Path $env:GITHUB_WORKSPACE 'D4T_PQ_PREFLIGHT_V3.ps1'
+          $p=Join-Path $HOME 'Downloads\D4T_PQ_PREFLIGHT_V3.ps1'
           $text=[IO.File]::ReadAllText($p,[Text.UTF8Encoding]::new($false))
           [void][scriptblock]::Create($text)
           'D4T_PQ_PREFLIGHT_V3_PARSE=PASS'
@@ -35,9 +50,4 @@ jobs:
         env:
           D4T_PQ_PREFLIGHT_SELFTEST: '1'
         run: |
-          $src=Join-Path $env:GITHUB_WORKSPACE 'D4T_PQ_PREFLIGHT_V3.ps1'
-          $downloads=Join-Path $HOME 'Downloads'
-          [IO.Directory]::CreateDirectory($downloads)|Out-Null
-          $dst=Join-Path $downloads 'D4T_PQ_PREFLIGHT_V3.ps1'
-          [IO.File]::WriteAllBytes($dst,[IO.File]::ReadAllBytes($src))
           $h='8ed9eb0d215efc849490c651004fd84817a5715bba36a721b208599952f54786'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_PQ_PREFLIGHT_V3*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_PQ_PREFLIGHT_V3_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; $lines=@(& pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName 2>&1); $exit=$LASTEXITCODE; $lines | ForEach-Object { "$_" }; if($exit -ne 0){throw "D4T_PQ_PREFLIGHT_V3_SELFTEST_EXIT::$exit"}; $joined=$lines -join "`n"; foreach($m in @('D4T_PQ_PREFLIGHT_SELFTEST_ARGUMENT_TRANSPORT=PASS','D4T_PQ_PREFLIGHT_WINDOWS_SELFTEST=PASS')){if(-not $joined.Contains($m)){throw "D4T_PQ_PREFLIGHT_V3_MISSING::$m"}}; 'D4T_PQ_PREFLIGHT_V3_EXACT_FINAL_LAUNCHER=PASS'
