@@ -1,0 +1,96 @@
+name: D4W Seed Custody Exact Windows Qualification
+on:
+  pull_request:
+    branches: [chatgpt-d4w-seed-custody-base2-20261110]
+
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify transport chunks and reconstruct exact runner
+        shell: pwsh
+        run: |
+          $expected=@(
+            '88017d25b569ceac4083a70dcd734557da73b2e3164604fd91644c8c53682bb5',
+            'b9059fcb20e89debf6def04eb1b25ee207c5ae5f636204db8c966b8443d095b4',
+            '20fe21ee5d0c43a786d3b9999e3b347ea6a0f6bfac631213982d1d9083443011',
+            '91f7469a3c2592394b418dc0feed2704d48c23285ebdf132590967c1c32cd709',
+            '69bf7aaa866c449eb0d2691f99260b2d2ffe2a8700383c6506abeb3a9406eea7',
+            'f674c53fe55b330342a338fd90f2f6cdd18b90b1068d49f2889af149a564003b',
+            '61d9a94c7f9bf0767996e4e4b41a4c79219f8de64f5c4e37102ab36cb08e392f',
+            'fb6eb6aaeefc8e61502d9c9c838a08c20141228d40e775058c008c398b8bdf41',
+            '49bd91449dbc6d637157bb13144e6a350312994152656cc995334207257865f5',
+            '2c8a8ec64f4e5f5a5f38628e852d039f39716706d0c4432c89bedb6bdfe8cc7c',
+            '074417c2b7fc55dc802a82297c9b4b80b49cc0fcfe2da5be762b8b9a0e6c6d28',
+            'f6d1b44339abc7269d211765731cd88965b354373091d2b696239c3511e771b4',
+            'e9b966ded812b87d5efb774d8c326ed6fdf7a33ce0cde09f95bc4c5914f2881e',
+            'a3ca4dc6150ec7ab3109ac09a780374400e6a08e2b7ae5746d667b95be01b6b0',
+            '6e11e59c068db752649e65bde3cee77726afbb924acf485f1ca63b6266bcd1bd'
+          )
+          $parts=@()
+          for($i=0;$i -lt 15;$i++){
+            $path=('.ci/chunks/{0:D2}.txt' -f $i)
+            $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($h -ne $expected[$i]){throw "CHUNK_HASH::$i::$h"}
+            $parts+=(Get-Content -LiteralPath $path -Raw)
+          }
+          $all=$parts -join ''
+          if($all.Length -ne 28836){throw "BASE64_LENGTH::$($all.Length)"}
+          $bytes=[Convert]::FromBase64String($all)
+          try{
+            [IO.File]::WriteAllBytes('.ci/D4W_SEED_CUSTODY.ps1',$bytes)
+          }finally{
+            [Array]::Clear($bytes,0,$bytes.Length)
+          }
+          $h=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/D4W_SEED_CUSTODY.ps1').Hash.ToLowerInvariant()
+          if($h -ne '4deac3220c80e73e4812b976ad70a2ad6acc7f32a2c5aaf9e06f9a32bf09202b'){throw "EXACT_HASH::$h"}
+          $len=(Get-Item -LiteralPath '.ci/D4W_SEED_CUSTODY.ps1').Length
+          if($len -ne 21626){throw "EXACT_BYTES::$len"}
+          "ALL_15_CHUNK_HASHES=PASS"
+          "EXACT_FILE_SHA256=$h"
+          "EXACT_FILE_BYTES=$len"
+
+      - name: Parse exact PowerShell
+        shell: pwsh
+        run: |
+          $tokens=$null
+          $errors=$null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path '.ci/D4W_SEED_CUSTODY.ps1').Path,
+            [ref]$tokens,
+            [ref]$errors
+          )
+          if($errors.Count -ne 0){
+            $errors | ForEach-Object { Write-Host $_.Message }
+            throw "POWERSHELL_PARSE_ERRORS::$($errors.Count)"
+          }
+          "POWERSHELL_PARSE=PASS"
+
+      - name: Execute exact Windows selftest
+        shell: pwsh
+        run: |
+          $out=@(& pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4W_SEED_CUSTODY.ps1' -SelfTest 2>&1 | ForEach-Object{"$_"})
+          $exit=$LASTEXITCODE
+          $out | ForEach-Object { Write-Host $_ }
+          if($exit -ne 0){throw "SELFTEST_EXIT::$exit"}
+          foreach($m in @(
+            'D4W_SEED_CUSTODY_WINDOWS_SELFTEST=PASS',
+            'D4W_SEED_CUSTODY_PREFLIGHT_BOUNDARY_SELFTEST=PASS',
+            'D4W_SEED_CUSTODY_RESTART_GUARD_SELFTEST=PASS'
+          )){
+            if($out -notcontains $m){throw "SELFTEST_MARKER_MISSING::$m"}
+          }
+          "EXACT_WINDOWS_SELFTEST=PASS"
+
+      - name: Execute exact final launcher under selftest gate
+        shell: pwsh
+        env:
+          D4W_SEED_CUSTODY_SELFTEST: '1'
+        run: |
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item '.ci/D4W_SEED_CUSTODY.ps1' (Join-Path $downloads 'D4W_SEED_CUSTODY.ps1') -Force
+          $h='4deac3220c80e73e4812b976ad70a2ad6acc7f32a2c5aaf9e06f9a32bf09202b'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4W_SEED_CUSTODY*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4W_SEED_CUSTODY_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName -PreflightOnly; if($LASTEXITCODE -ne 0){throw "D4W_SEED_CUSTODY_PREFLIGHT_EXIT::$LASTEXITCODE"}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName; if($LASTEXITCODE -ne 0){throw "D4W_SEED_CUSTODY_EXIT::$LASTEXITCODE"}
+          "EXACT_FINAL_LAUNCHER=PASS"
