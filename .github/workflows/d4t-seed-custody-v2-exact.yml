@@ -11,8 +11,8 @@ jobs:
       - name: Reconstruct exact V2
         shell: pwsh
         run: |
-          $gzPath='.ci/D4T_SEED_CUSTODY_V2.ps1.gz'
-          $gz=[IO.File]::ReadAllBytes($gzPath)
+          $b64=(Get-Content -LiteralPath '.ci/D4T_SEED_CUSTODY_V2.ps1.gz.b64' -Raw) -replace '\s',''
+          $gz=[Convert]::FromBase64String($b64)
           $mi=[IO.MemoryStream]::new($gz)
           $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
           $mo=[IO.MemoryStream]::new()
