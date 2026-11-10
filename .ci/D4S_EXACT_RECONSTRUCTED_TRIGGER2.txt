@@ -1,0 +1,1 @@
+Trigger exact reconstructed-byte D4S Windows self-test after YAML fix.
