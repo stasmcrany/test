@@ -1,0 +1,25 @@
+name: D4S Prequalify Windows Plumbing Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-prequalify-ci-base-20261110
+jobs:
+  plumbing:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact runner bytes
+        shell: pwsh
+        run: |
+          $expected='8e78219ae96bce21650e6851cf4ba8087b6d865ac2141741a2d8cc201606a95c'
+          $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/D4S_PREQUALIFY.ps1').Hash.ToLowerInvariant()
+          if($actual -ne $expected){throw "HASH_MISMATCH::$actual"}
+          "EXACT_RUNNER_SHA256=$actual"
+      - name: Execute exact Windows plumbing self-test
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4S_PREQUALIFY.ps1' -PlumbingSelfTest
+          if($LASTEXITCODE -ne 0){throw "PLUMBING_EXIT::$LASTEXITCODE"}
