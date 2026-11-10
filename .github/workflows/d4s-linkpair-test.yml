@@ -1,0 +1,41 @@
+name: D4S Link Pair Exact Windows Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-linkpair-ci-20261110
+jobs:
+  exact-pair:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact PS file into Downloads
+        shell: pwsh
+        run: |
+          $b64='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'
+          $gz=[Convert]::FromBase64String($b64)
+          $in=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($in,[IO.Compression.CompressionMode]::Decompress)
+          $out=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($out)
+            $bytes=$out.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            New-Item -ItemType Directory -Force -Path $downloads | Out-Null
+            $path=Join-Path $downloads 'D4S_RECOVERY.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne 'a1dde175b53eb312fc5dde39ba9a86e51ba645e1362ba0978d59d5d3c957e3de'){throw "FILE_HASH::$actual"}
+            Write-Output "EXACT_FILE_SHA256=$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $out.Dispose(); $zs.Dispose(); $in.Dispose(); [Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Execute exact PS self-test
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File "$HOME\Downloads\D4S_RECOVERY.ps1" -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
+      - name: Execute exact launcher plumbing
+        shell: pwsh
+        run: |
+          $h='a1dde175b53eb312fc5dde39ba9a86e51ba645e1362ba0978d59d5d3c957e3de'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4S_RECOVERY*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4S_RECOVERY_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER_EXIT::$LASTEXITCODE"}
