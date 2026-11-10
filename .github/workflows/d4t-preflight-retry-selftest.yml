@@ -1,0 +1,82 @@
+name: D4T Preflight Retry Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4t-preflight-retry-ci-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact frozen file
+        shell: pwsh
+        run: |
+          $b64=@'
+          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
+          '@
+          $gz=[Convert]::FromBase64String(($b64 -replace '\s',''))
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo); $bytes=$mo.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4T_PREFLIGHT_RETRY.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '6622c1d884c098ee79a3ae9105ca5222c75c8b1fed06192adcbf0a5b4db6e6b7'){throw "HASH_MISMATCH::$actual"}
+            "D4T_PREFLIGHT_RETRY_EXACT_SHA=PASS::$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Run exact launcher in self-test mode
+        shell: pwsh
+        env:
+          D4T_PREFLIGHT_RETRY_SELFTEST: '1'
+        run: |
+          $h='6622c1d884c098ee79a3ae9105ca5222c75c8b1fed06192adcbf0a5b4db6e6b7'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_PREFLIGHT_RETRY*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_PREFLIGHT_RETRY_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER_EXIT::$LASTEXITCODE"}
