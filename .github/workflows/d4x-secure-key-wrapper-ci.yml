@@ -1,5 +1,7 @@
 name: D4X secure key wrapper exact Windows CI
 on:
+  push:
+    branches: [ chatgpt-d4x-secure-key-preflight-ci-20261110 ]
   pull_request:
     branches: [ master ]
 jobs:
