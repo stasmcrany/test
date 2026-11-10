@@ -11,7 +11,7 @@ jobs:
         shell: pwsh
         run: |
           $expected=@{
-            'chunk_00.b64'='04fcf06008a73ee754cf42e1f695320ac1d8fc76c6c6f87134351862d2b801a5'
+            'chunk_00.b64'='df9dadaaf05e72cee15c2ccea978481874929a2166df3b8f7630f561c6c834e2'
             'chunk_01.b64'='ad9ceeb474fb9a0973777ffae8cb337e8447e07dc925cca73da839589fbec430'
             'chunk_02.b64'='bbbfc8b67505eb0f055de19ceeaec1193dfd3e3558cc5aa23e693b467b716de6'
             'chunk_03.b64'='9781bb98f2095f05f550d3caee73cf7d109f74bbe75320f817a84251251922f0'
@@ -30,7 +30,7 @@ jobs:
           $out=Join-Path $env:RUNNER_TEMP 'D4V_PRE_FREEZE_PATCH_TEST.ps1'
           [IO.File]::WriteAllBytes($out,$bytes)
           $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $out).Hash.ToLowerInvariant()
-          if($h -ne '0cd689c741f22812d912857b3a36d5bd1361e7d3ca0752ec1520d69348d58b64'){throw "RUNNER_HASH::$h"}
+          if($h -ne 'c198cd588cf87769022c528cb49d2e673bd7df37b00191efd2362de93b3cd945'){throw "RUNNER_HASH::$h"}
           "EXACT_RUNNER_BYTES=$($bytes.Length)"
           "EXACT_RUNNER_SHA256=$h"
       - name: Execute exact self-test
@@ -44,7 +44,7 @@ jobs:
         env:
           D4V_PRE_FREEZE_PATCH_SELFTEST: '1'
         run: |
-          $h='0cd689c741f22812d912857b3a36d5bd1361e7d3ca0752ec1520d69348d58b64'
+          $h='c198cd588cf87769022c528cb49d2e673bd7df37b00191efd2362de93b3cd945'
           $downloads=Join-Path $HOME 'Downloads'
           [IO.Directory]::CreateDirectory($downloads)|Out-Null
           Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'D4V_PRE_FREEZE_PATCH_TEST.ps1') -Destination (Join-Path $downloads 'D4V_PRE_FREEZE_PATCH_TEST.ps1') -Force
