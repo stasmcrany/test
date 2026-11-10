@@ -1,0 +1,43 @@
+name: D4T PQ Preflight V3 Exact Windows CI
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4t-pq-preflight-v3-ci-base-20261110
+
+jobs:
+  exact-windows-selftest:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify exact frozen PS bytes
+        shell: pwsh
+        run: |
+          $p=Join-Path $env:GITHUB_WORKSPACE 'D4T_PQ_PREFLIGHT_V3.ps1'
+          if(-not (Test-Path -LiteralPath $p -PathType Leaf)){throw 'CI_FILE_MISSING'}
+          $bytes=[IO.File]::ReadAllBytes($p)
+          if($bytes.Length -ne 11123){throw "CI_BYTES::$($bytes.Length)"}
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          if($sha -ne '8ed9eb0d215efc849490c651004fd84817a5715bba36a721b208599952f54786'){throw "CI_SHA::$sha"}
+          "D4T_PQ_PREFLIGHT_V3_EXACT_SHA256=$sha"
+          "D4T_PQ_PREFLIGHT_V3_EXACT_BYTES=$($bytes.Length)"
+
+      - name: Parse exact PowerShell
+        shell: pwsh
+        run: |
+          $p=Join-Path $env:GITHUB_WORKSPACE 'D4T_PQ_PREFLIGHT_V3.ps1'
+          $text=[IO.File]::ReadAllText($p,[Text.UTF8Encoding]::new($false))
+          [void][scriptblock]::Create($text)
+          'D4T_PQ_PREFLIGHT_V3_PARSE=PASS'
+
+      - name: Execute exact final launcher with self-test environment
+        shell: pwsh
+        env:
+          D4T_PQ_PREFLIGHT_SELFTEST: '1'
+        run: |
+          $src=Join-Path $env:GITHUB_WORKSPACE 'D4T_PQ_PREFLIGHT_V3.ps1'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          $dst=Join-Path $downloads 'D4T_PQ_PREFLIGHT_V3.ps1'
+          [IO.File]::WriteAllBytes($dst,[IO.File]::ReadAllBytes($src))
+          $h='8ed9eb0d215efc849490c651004fd84817a5715bba36a721b208599952f54786'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_PQ_PREFLIGHT_V3*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_PQ_PREFLIGHT_V3_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; $lines=@(& pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName 2>&1); $exit=$LASTEXITCODE; $lines | ForEach-Object { "$_" }; if($exit -ne 0){throw "D4T_PQ_PREFLIGHT_V3_SELFTEST_EXIT::$exit"}; $joined=$lines -join "`n"; foreach($m in @('D4T_PQ_PREFLIGHT_SELFTEST_ARGUMENT_TRANSPORT=PASS','D4T_PQ_PREFLIGHT_WINDOWS_SELFTEST=PASS')){if(-not $joined.Contains($m)){throw "D4T_PQ_PREFLIGHT_V3_MISSING::$m"}}; 'D4T_PQ_PREFLIGHT_V3_EXACT_FINAL_LAUNCHER=PASS'
