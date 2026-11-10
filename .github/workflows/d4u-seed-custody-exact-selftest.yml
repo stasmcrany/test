@@ -1,0 +1,100 @@
+name: D4U Seed Custody Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4u-seed-custody-ci-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact verified D4T V3 base
+        shell: pwsh
+        run: |
+          $wf=Get-Content -LiteralPath '.github/workflows/d4t-seed-custody-v3-gzip-selftest.yml' -Raw
+          if($wf -notmatch "FromBase64String\('([^']+)'\)"){throw 'D4T_V3_GZIP_NOT_FOUND'}
+          $gz=[Convert]::FromBase64String($Matches[1])
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo)
+            $bytes=$mo.ToArray()
+            $path=Join-Path $env:RUNNER_TEMP 'D4T_SEED_CUSTODY_V3.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '3258ec433e2de8d8c636446572fef32c77f39376e0269884ba9fe07c2cd1e4e8'){throw "D4T_BASE_HASH::$actual"}
+            "D4T_BASE_EXACT_SHA256=$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Deterministically derive exact D4U runner
+        shell: pwsh
+        run: |
+          $py=@'
+          from pathlib import Path
+          import re,hashlib,os
+          src=(Path(os.environ["RUNNER_TEMP"])/"D4T_SEED_CUSTODY_V3.ps1").read_text(encoding="utf-8")
+          smoke=Path(".ci/d4u_smoke_verification_frozen.json").read_text(encoding="utf-8").replace("\r\n","\n").rstrip("\n")
+          s=src.replace("D4T","D4U").replace("d4t","d4u")
+          repl={
+          "9bfae179671ad17170357b84683e6ff2d11a1428b440c1685f23ead50c118a7b":"d01c1b42c93b9b2f630cac65f937d776c5914b9e7592adef2df6624a2b7eaf7b",
+          "86bffd56f48be4005ff2050d01549287c04242668121102a200bfd220a3f5cae":"10bb0ecb6552d15a19806f7afde3c35be1d33107d72b492cb783034ebb5660c8",
+          "2749f9ddabfce73b414806fb5cad2346c58e7e816b4202c4623224f0adeb6cd7":"a1ac45636282d561c7a9e3ccfc88c74285b81adbb01eef34a5464e7e6e887099",
+          "5536c1b8b848cf9a9fcc806d878b5299201b190e07753fb8f277023802e50aee":"bd4b3c870affc3c9683893d4af4eb336a75f5620867c7bbb882fdf9409713beb",
+          "V3_DOTNET_ACL":"V1_DOTNET_ACL"}
+          for a,b in repl.items():
+              if a not in s: raise SystemExit("MISSING_REPL::"+a)
+              s=s.replace(a,b)
+          pat=re.compile(r"\$SmokeVerificationJson=@'\n.*?\n'@\n\$SmokeVerificationJson \+= \"\x60n\"",re.S)
+          m=pat.search(s)
+          if not m: raise SystemExit("SMOKE_BLOCK_NOT_FOUND")
+          new="$SmokeVerificationJson=@'\n"+smoke+"\n'@\n$SmokeVerificationJson += \"\x60n\""
+          s=s[:m.start()]+new+s[m.end():]
+          forbidden=[
+          "c4e8136ff4bb7f433ee6f2b4fdac102d1954bd9eb92c7017af1a2c153d85b163",
+          "168c9219dc189e902645284b17ce018001445eabe3ffd57db202650f78dc70e6",
+          "7f56de0dcbc0661e111ed0aae8e1175f3c91f22ba9d3c08bd8815c33f33bc4d0",
+          "68a652382d67b659ccd37c1bdc7427d91184f716cb21217afb1204bce2deee53",
+          "1344463a84d475362b560daadc9d3bc9509f6e001263a25b4b39b3cb27ef40a3",
+          "8f00d036c72e144e75c42b870515437513876d161158f7f1364554dd3301a19b",
+          "9af57bb79c437769cf7a1147b1b9762aa6811b3f47601c9a2f9dcca1f7c6cf3e",
+          "630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd"]
+          fb="$ForbiddenCommitments=@(\n"+",\n".join("'"+x+"'" for x in forbidden)+"\n)"
+          s=re.sub(r"\$ForbiddenCommitments=@\(\n.*?\n\)",fb,s,count=1,flags=re.S)
+          if "D4T" in s or "d4t" in s: raise SystemExit("D4T_LITERAL_REMAINS")
+          out=Path(os.environ["RUNNER_TEMP"])/"D4U_SEED_CUSTODY.ps1"
+          out.write_text(s,encoding="utf-8",newline="\n")
+          raw=out.read_bytes()
+          actual=hashlib.sha256(raw).hexdigest()
+          print("D4U_DERIVED_BYTES="+str(len(raw)))
+          print("D4U_DERIVED_SHA256="+actual)
+          if len(raw)!=20742 or actual!="8afb09865a543e70200c4d6f3f137f6e60c0ef1a9b157c99bfa82281a9604960":
+              raise SystemExit("D4U_DERIVATION_MISMATCH")
+          '@
+          $tf=Join-Path $env:RUNNER_TEMP 'derive_d4u.py'
+          [IO.File]::WriteAllText($tf,$py,[Text.UTF8Encoding]::new($false))
+          python $tf
+          if($LASTEXITCODE -ne 0){throw "D4U_DERIVE_EXIT::$LASTEXITCODE"}
+      - name: Parse exact D4U PowerShell
+        shell: pwsh
+        run: |
+          $path=Join-Path $env:RUNNER_TEMP 'D4U_SEED_CUSTODY.ps1'
+          $tokens=$null;$errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)|Out-Null
+          if($errors.Count){$errors|ForEach-Object{Write-Error $_.Message};throw 'D4U_PARSE_FAIL'}
+          'D4U_POWERSHELL_PARSE=PASS'
+      - name: Execute exact final D4U launcher in self-test mode
+        shell: pwsh
+        env:
+          D4U_SEED_CUSTODY_SELFTEST: '1'
+        run: |
+          $h='8afb09865a543e70200c4d6f3f137f6e60c0ef1a9b157c99bfa82281a9604960'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'D4U_SEED_CUSTODY.ps1') -Destination (Join-Path $downloads 'D4U_SEED_CUSTODY.ps1') -Force
+          $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4U_SEED_CUSTODY*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
+          if(-not $f){throw 'D4U_SEED_CUSTODY_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "D4U_SELFTEST_EXIT::$LASTEXITCODE"}
