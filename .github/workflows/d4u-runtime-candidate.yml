@@ -1,0 +1,27 @@
+name: D4U Runtime Candidate Probe
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4u-runtime-candidate-base-20261110
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull Python 3.12 slim and prove identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker pull python:3.12-slim
+          docker image inspect python:3.12-slim --format 'IMAGE_ID={{.Id}} OS={{.Os}} ARCH={{.Architecture}}'
+          docker image inspect python:3.12-slim --format '{{json .RepoDigests}}'
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges python:3.12-slim python - <<'PY'
+          import os, platform, sys
+          print("PYTHON_VERSION="+platform.python_version())
+          print("PYTHON_MAJOR_MINOR="+str(sys.version_info.major)+"."+str(sys.version_info.minor))
+          print("PYTHON_EXECUTABLE="+sys.executable)
+          print("PLATFORM="+sys.platform)
+          print("OS_NAME="+os.name)
+          assert sys.version_info[:2] == (3,12)
+          assert sys.platform == "linux"
+          assert os.name == "posix"
+          PY
