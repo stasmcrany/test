@@ -14,68 +14,83 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct exact D4X seed custody runner
+      - name: Reconstruct exact D4X seed custody V2 runner
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $paths=@(
-            'd4x_seed_chunks/chunk01.b64',
-            'd4x_seed_chunks/chunk02.b64',
-            'd4x_seed_chunks/chunk03.b64',
-            'd4x_seed_chunks/chunk04.b64',
-            'd4x_seed_chunks/chunk05.b64',
-            'd4x_seed_chunks/chunk06.b64',
-            'd4x_seed_chunks/chunk07a.b64',
-            'd4x_seed_chunks/chunk07b.b64',
-            'd4x_seed_chunks/chunk08.b64'
+            'd4x_seed_v2_gz/gz01.b64',
+            'd4x_seed_v2_gz/gz02.b64',
+            'd4x_seed_v2_gz/gz03.b64',
+            'd4x_seed_v2_gz/gz04.b64',
+            'd4x_seed_v2_gz/gz05.b64'
           )
-          foreach($p in $paths){ if(-not (Test-Path -LiteralPath $p -PathType Leaf)){ throw "MISSING_CHUNK::$p" } }
+          foreach($p in $paths){ if(-not (Test-Path -LiteralPath $p -PathType Leaf)){ throw "MISSING_GZ_CHUNK::$p" } }
           $b64=($paths | ForEach-Object { (Get-Content -LiteralPath $_ -Raw).Trim() }) -join ''
-          if($b64.Length -ne 29380){ throw "D4X_BASE64_LENGTH_MISMATCH::$($b64.Length)" }
-          $bytes=[Convert]::FromBase64String($b64)
-          if($bytes.Length -ne 22034){ throw "D4X_BYTE_LENGTH_MISMATCH::$($bytes.Length)" }
-          $path=Join-Path $PWD 'D4X_SEED_CUSTODY.ps1'
+          if($b64.Length -ne 9916){ throw "D4X_V2_GZIP_BASE64_LENGTH_MISMATCH::$($b64.Length)" }
+          $gz=[Convert]::FromBase64String($b64)
+          if($gz.Length -ne 7437){ throw "D4X_V2_GZIP_BYTE_LENGTH_MISMATCH::$($gz.Length)" }
+          $gzPath=Join-Path $PWD 'D4X_SEED_CUSTODY_V2.ps1.gz'
+          [IO.File]::WriteAllBytes($gzPath,$gz)
+          $gzSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $gzPath).Hash.ToLowerInvariant()
+          if($gzSha -ne '7c09276a0230138f21d3073f4b754bd7f5f720e53c140f77e018038705dbdff3'){ throw "D4X_V2_GZIP_SHA_MISMATCH::$gzSha" }
+
+          $input=[IO.File]::OpenRead($gzPath)
+          $gzip=[IO.Compression.GZipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
+          $output=[IO.MemoryStream]::new()
+          try{
+            $gzip.CopyTo($output)
+            $bytes=$output.ToArray()
+          }finally{
+            $gzip.Dispose()
+            $input.Dispose()
+            $output.Dispose()
+          }
+
+          if($bytes.Length -ne 22460){ throw "D4X_V2_BYTE_LENGTH_MISMATCH::$($bytes.Length)" }
+          $path=Join-Path $PWD 'D4X_SEED_CUSTODY_V2.ps1'
           [IO.File]::WriteAllBytes($path,$bytes)
           $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
-          if($sha -ne '3ad2d2b882f6484556915a2c77bb469ed05be3d719f3b8d4eb13d6c8428a3f1c'){ throw "D4X_SHA_MISMATCH::$sha" }
-          Write-Host 'D4X_GH_EXACT_BYTES=22034'
-          Write-Host ('D4X_GH_EXACT_SHA256='+$sha)
-          Write-Host 'D4X_GH_EXACT_SHA=PASS'
+          if($sha -ne '31bc6fff36520c0881d0b587224d2b85eec20e9b3b919d59f61832d2df3e8b3d'){ throw "D4X_V2_SHA_MISMATCH::$sha" }
+          Write-Host 'D4X_V2_GH_GZIP_SHA=PASS'
+          Write-Host 'D4X_V2_GH_EXACT_BYTES=22460'
+          Write-Host ('D4X_V2_GH_EXACT_SHA256='+$sha)
+          Write-Host 'D4X_V2_GH_EXACT_SHA=PASS'
 
-      - name: Parse exact PowerShell
+      - name: Parse exact PowerShell V2
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $path=Join-Path $PWD 'D4X_SEED_CUSTODY.ps1'
+          $path=Join-Path $PWD 'D4X_SEED_CUSTODY_V2.ps1'
           $tokens=$null
           $errors=$null
           [void][System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$errors)
           if($errors.Count -ne 0){
             $errors | ForEach-Object { Write-Host $_.Message }
-            throw "D4X_POWERSHELL_PARSE_ERRORS::$($errors.Count)"
+            throw "D4X_V2_POWERSHELL_PARSE_ERRORS::$($errors.Count)"
           }
-          Write-Host 'D4X_GH_PARSE=PASS'
+          Write-Host 'D4X_V2_GH_PARSE=PASS'
 
-      - name: Execute exact Windows self-test
+      - name: Execute exact Windows V2 self-test
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $path=Join-Path $PWD 'D4X_SEED_CUSTODY.ps1'
+          $path=Join-Path $PWD 'D4X_SEED_CUSTODY_V2.ps1'
           $before=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
-          if($before -ne '3ad2d2b882f6484556915a2c77bb469ed05be3d719f3b8d4eb13d6c8428a3f1c'){ throw 'D4X_PRE_SELFTEST_SHA' }
+          if($before -ne '31bc6fff36520c0881d0b587224d2b85eec20e9b3b919d59f61832d2df3e8b3d'){ throw 'D4X_V2_PRE_SELFTEST_SHA' }
           $output=& pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest 2>&1
           $exit=$LASTEXITCODE
           $output | ForEach-Object { Write-Host $_ }
-          if($exit -ne 0){ throw "D4X_SELFTEST_EXIT::$exit" }
+          if($exit -ne 0){ throw "D4X_V2_SELFTEST_EXIT::$exit" }
           $joined=$output -join "`n"
           foreach($marker in @(
             'D4X_SEED_CUSTODY_WINDOWS_SELFTEST=PASS',
             'D4X_SEED_CUSTODY_PREFLIGHT_BOUNDARY_SELFTEST=PASS',
             'D4X_SEED_CUSTODY_RESTART_GUARD_SELFTEST=PASS'
           )){
-            if($joined -notmatch [regex]::Escape($marker)){ throw "D4X_SELFTEST_MARKER_MISSING::$marker" }
+            if($joined -notmatch [regex]::Escape($marker)){ throw "D4X_V2_SELFTEST_MARKER_MISSING::$marker" }
           }
           $after=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
-          if($after -ne $before){ throw "D4X_POST_SELFTEST_SHA_CHANGED::$after" }
-          Write-Host 'D4X_GH_SELFTEST=PASS'
-          Write-Host 'D4X_GH_POST_SELFTEST_SHA=PASS'
+          if($after -ne $before){ throw "D4X_V2_POST_SELFTEST_SHA_CHANGED::$after" }
+          Write-Host 'D4X_V2_GH_SELFTEST=PASS'
+          Write-Host 'D4X_V2_GH_POST_SELFTEST_SHA=PASS'
