@@ -1,0 +1,54 @@
+name: D4T Seed Custody V2 Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - d4t-seed-custody-v2-ci-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact V2
+        shell: pwsh
+        run: |
+          $gzPath='.ci/D4T_SEED_CUSTODY_V2.ps1.gz'
+          $gz=[IO.File]::ReadAllBytes($gzPath)
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo)
+            $bytes=$mo.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4T_SEED_CUSTODY_V2.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '34520d651124bc98c7d66b9b121677cf9cfb5fe351c44d23dcad90b73e8367f2'){throw "HASH_MISMATCH::$actual"}
+            "EXACT_V2_SHA256=$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Execute exact V2 self-test
+        shell: pwsh
+        run: |
+          $path=Join-Path (Join-Path $HOME 'Downloads') 'D4T_SEED_CUSTODY_V2.ps1'
+          $out=& pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest 2>&1
+          $code=$LASTEXITCODE
+          $out|ForEach-Object{Write-Output $_}
+          if($code -ne 0){throw "SELFTEST_EXIT::$code"}
+          $text=$out -join "`n"
+          foreach($required in @('D4T_PREFLIGHT_STATUS=PASS','D4T_SEED_CUSTODY_STATUS=PASS','D4T_PRIMARY_CUSTODY_REPLAY=PASS','D4T_BACKUP_CUSTODY_REPLAY=PASS','D4T_CUSTODY_COMMITMENT_EQUALITY=PASS','D4T_SEED_CUSTODY_WINDOWS_SELFTEST=PASS')){
+            if(-not $text.Contains($required)){throw "MISSING_MARKER::$required"}
+          }
+      - name: Execute exact V2 final launcher
+        shell: pwsh
+        env:
+          D4T_SEED_CUSTODY_SELFTEST: '1'
+        run: |
+          $out=& { $h='34520d651124bc98c7d66b9b121677cf9cfb5fe351c44d23dcad90b73e8367f2'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_SEED_CUSTODY_V2*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_SEED_CUSTODY_V2_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName } 2>&1
+          $code=$LASTEXITCODE
+          $out|ForEach-Object{Write-Output $_}
+          if($code -ne 0){throw "LAUNCHER_EXIT::$code"}
+          if(-not (($out -join "`n").Contains('D4T_SEED_CUSTODY_WINDOWS_SELFTEST=PASS'))){throw 'FINAL_LAUNCHER_MARKER_MISSING'}
