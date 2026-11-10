@@ -1,0 +1,54 @@
+name: D4T Seed Custody Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - d4t-seed-custody-ci-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact frozen PS file
+        shell: pwsh
+        run: |
+          $b64='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'
+          $gz=[Convert]::FromBase64String($b64)
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo)
+            $bytes=$mo.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4T_SEED_CUSTODY.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne '00c1c8951767c5a7bc3f5d0899d3b113bbb5b3f7b9c155cc27229300e9638018'){throw "HASH_MISMATCH::$actual"}
+            "EXACT_SCRIPT_SHA256=$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Execute exact script self-test
+        shell: pwsh
+        run: |
+          $path=Join-Path (Join-Path $HOME 'Downloads') 'D4T_SEED_CUSTODY.ps1'
+          $out=& pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest 2>&1
+          $code=$LASTEXITCODE
+          $out|ForEach-Object{Write-Output $_}
+          if($code -ne 0){throw "SELFTEST_EXIT::$code"}
+          $text=$out -join "`n"
+          foreach($required in @('D4T_SEED_CUSTODY_STATUS=PASS','D4T_PRIMARY_CUSTODY_REPLAY=PASS','D4T_BACKUP_CUSTODY_REPLAY=PASS','D4T_CUSTODY_COMMITMENT_EQUALITY=PASS','D4T_SEED_CUSTODY_WINDOWS_SELFTEST=PASS')){
+            if(-not $text.Contains($required)){throw "MISSING_SELFTEST_MARKER::$required"}
+          }
+      - name: Execute exact final launcher
+        shell: pwsh
+        env:
+          D4T_SEED_CUSTODY_SELFTEST: '1'
+        run: |
+          $out = & { $h='00c1c8951767c5a7bc3f5d0899d3b113bbb5b3f7b9c155cc27229300e9638018'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_SEED_CUSTODY*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_SEED_CUSTODY_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName } 2>&1
+          $code=$LASTEXITCODE
+          $out|ForEach-Object{Write-Output $_}
+          if($code -ne 0){throw "LAUNCHER_EXIT::$code"}
+          $text=$out -join "`n"
+          if(-not $text.Contains('D4T_SEED_CUSTODY_WINDOWS_SELFTEST=PASS')){throw 'FINAL_LAUNCHER_SELFTEST_MARKER_MISSING'}
