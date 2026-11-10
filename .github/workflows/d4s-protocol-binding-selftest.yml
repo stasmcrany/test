@@ -2,7 +2,7 @@ name: D4S Protocol Binding Exact Windows Self-Test
 on:
   pull_request:
     branches:
-      - chatgpt-d4s-binding-ci-base-20261110
+      - chatgpt-d4s-binding-exactpair-base-20261110
 jobs:
   exact:
     runs-on: windows-latest
@@ -74,7 +74,9 @@ jobs:
           try {
             $zs.CopyTo($mo)
             $bytes=$mo.ToArray()
-            $path=Join-Path $env:RUNNER_TEMP 'D4S_PROTOCOL_BINDING.ps1'
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4S_PROTOCOL_BINDING.ps1'
             [IO.File]::WriteAllBytes($path,$bytes)
             $expected='f049e4ea89904ee26b412284b38d9036a9598c348fce1e1365667c96669429c7'
             $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
@@ -84,9 +86,9 @@ jobs:
             if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
             $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
           }
-      - name: Execute exact self-test
+      - name: Execute exact user launcher against exact file
         shell: pwsh
         run: |
-          $path=Join-Path $env:RUNNER_TEMP 'D4S_PROTOCOL_BINDING.ps1'
-          & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
-          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
+          function pwsh { & 'C:\Program Files\PowerShell\7\pwsh.exe' @args -SelfTest }
+          $h='f049e4ea89904ee26b412284b38d9036a9598c348fce1e1365667c96669429c7'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4S_PROTOCOL_BINDING*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4S_PROTOCOL_BINDING_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "EXACT_LAUNCHER_EXIT::$LASTEXITCODE"}
