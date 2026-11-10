@@ -1,0 +1,35 @@
+name: D4V Pre-Freeze Patch V3 Exact Windows Qualification
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4v-pre-freeze-patch-v3-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact SHA
+        shell: pwsh
+        run: |
+          $p='.ci/D4V_PRE_FREEZE_PATCH_TEST_V3.ps1'
+          $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          if($h -ne '1df2fb820b1c7decc45a1356f44e14c5ea45dacf94b9c995d6a29609238e8446'){throw "HASH::$h"}
+          "EXACT_SHA=$h"
+      - name: Exact selftest
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4V_PRE_FREEZE_PATCH_TEST_V3.ps1' -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST::$LASTEXITCODE"}
+      - name: Exact final launcher under selftest gate
+        shell: pwsh
+        env:
+          D4V_PRE_FREEZE_PATCH_SELFTEST: '1'
+        run: |
+          $h='1df2fb820b1c7decc45a1356f44e14c5ea45dacf94b9c995d6a29609238e8446'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item '.ci/D4V_PRE_FREEZE_PATCH_TEST_V3.ps1' (Join-Path $downloads 'D4V_PRE_FREEZE_PATCH_TEST_V3.ps1') -Force
+          $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4V_PRE_FREEZE_PATCH_TEST_V3*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
+          if(-not $f){throw 'D4V_PRE_FREEZE_PATCH_TEST_V3_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER::$LASTEXITCODE"}
