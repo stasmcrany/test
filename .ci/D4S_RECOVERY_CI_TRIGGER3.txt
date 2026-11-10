@@ -1,0 +1,1 @@
+Trigger exact D4S Windows self-test from reconstructed frozen bytes.
