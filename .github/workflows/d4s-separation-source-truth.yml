@@ -1,0 +1,23 @@
+name: D4S Derivation Separation Source-Truth Windows Verification
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-separation-sourcepass-base-20261110
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify immutable Git blob and compute SHA256
+        shell: pwsh
+        run: |
+          $blob=(git hash-object '.ci/D4S_DERIVATION_SEPARATION.ps1').Trim()
+          if($blob -ne 'undefined'){throw "GIT_BLOB_MISMATCH::$blob"}
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/D4S_DERIVATION_SEPARATION.ps1').Hash.ToLowerInvariant()
+          "D4S_SOURCE_GIT_BLOB=undefined"
+          "D4S_SOURCE_SHA256=$sha"
+      - name: Execute full exact self-test
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4S_DERIVATION_SEPARATION.ps1' -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
