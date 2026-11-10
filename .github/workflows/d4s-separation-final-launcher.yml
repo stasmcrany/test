@@ -1,0 +1,28 @@
+name: D4S Derivation Separation Exact Final Launcher Verification
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4s-separation-sourcepass-base-20261110
+jobs:
+  launcher:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Revalidate frozen source
+        shell: pwsh
+        run: |
+          $blob=(git hash-object '.ci/D4S_DERIVATION_SEPARATION.ps1').Trim()
+          if($blob -ne '0ba7bec0c3418f5494137d1fbcf032e2b7fb6cec'){throw "GIT_BLOB_DRIFT::$blob"}
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath '.ci/D4S_DERIVATION_SEPARATION.ps1').Hash.ToLowerInvariant()
+          if($sha -ne '27e88b899633bae52fc4e56a00a93e9b70afbe3fcf9869b56c80fb6de7da815c'){throw "SHA256_DRIFT::$sha"}
+          "FROZEN_SOURCE_REPLAY=PASS::$sha"
+      - name: Execute exact final launcher
+        shell: pwsh
+        env:
+          D4S_DERIVATION_SEPARATION_SELFTEST: '1'
+        run: |
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item -LiteralPath '.ci/D4S_DERIVATION_SEPARATION.ps1' -Destination (Join-Path $downloads 'D4S_DERIVATION_SEPARATION.ps1')
+          $h='27e88b899633bae52fc4e56a00a93e9b70afbe3fcf9869b56c80fb6de7da815c'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4S_DERIVATION_SEPARATION*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4S_DERIVATION_SEPARATION_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "FINAL_LAUNCHER_EXIT::$LASTEXITCODE"}
