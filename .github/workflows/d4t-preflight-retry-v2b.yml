@@ -1,0 +1,40 @@
+name: D4T Preflight Retry V2b Exact Windows Qualification
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4t-preflight-retry-v2b-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct exact runner
+        shell: pwsh
+        run: |
+          $parts=0..4 | ForEach-Object { Get-Content -LiteralPath ".ci/d4t_retry_v2/chunk$_.txt" -Raw }
+          $b64=$parts -join ''
+          $bytes=[Convert]::FromBase64String($b64)
+          $path=Join-Path $env:RUNNER_TEMP 'D4T_PREFLIGHT_RETRY_V2.ps1'
+          [IO.File]::WriteAllBytes($path,$bytes)
+          $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+          if($actual -ne '122d587c3c0211c35690dbd86074c66758872a40695b5ecfd07a9a4fe15cf020'){throw "HASH_MISMATCH::$actual"}
+          "EXACT_FILE_SHA256=$actual"
+      - name: Execute exact self-test
+        shell: pwsh
+        run: |
+          $path=Join-Path $env:RUNNER_TEMP 'D4T_PREFLIGHT_RETRY_V2.ps1'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
+      - name: Execute exact final launcher under self-test gate
+        shell: pwsh
+        env:
+          D4T_PREFLIGHT_RETRY_SELFTEST: '1'
+        run: |
+          $h='122d587c3c0211c35690dbd86074c66758872a40695b5ecfd07a9a4fe15cf020'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'D4T_PREFLIGHT_RETRY_V2.ps1') -Destination (Join-Path $downloads 'D4T_PREFLIGHT_RETRY_V2.ps1') -Force
+          $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_PREFLIGHT_RETRY_V2*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
+          if(-not $f){throw 'D4T_PREFLIGHT_RETRY_V2_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER_EXIT::$LASTEXITCODE"}
