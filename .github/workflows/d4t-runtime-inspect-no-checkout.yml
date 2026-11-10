@@ -1,0 +1,37 @@
+name: D4T Runtime Inspector No-Checkout Qualification
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4t-runtime-inspect-base2-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - name: Fetch immutable exact runner and verify SHA
+        shell: pwsh
+        run: |
+          $url='https://raw.githubusercontent.com/stasmcrany/test/0897604aa335b8dbda7b2e90d663a59f3377f7d3/.ci/D4T_RUNTIME_INSPECT.ps1'
+          $path=Join-Path $env:RUNNER_TEMP 'D4T_RUNTIME_INSPECT.ps1'
+          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path
+          $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+          if($actual -ne '16cbb2cdf217c131c3272446934b736b4adff82891cbab837dff0e77888b71c6'){throw "HASH_MISMATCH::$actual"}
+          "EXACT_FILE_SHA256=$actual"
+      - name: Execute exact self-test
+        shell: pwsh
+        run: |
+          $path=Join-Path $env:RUNNER_TEMP 'D4T_RUNTIME_INSPECT.ps1'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
+      - name: Execute exact final launcher under self-test gate
+        shell: pwsh
+        env:
+          D4T_RUNTIME_INSPECT_SELFTEST: '1'
+        run: |
+          $h='16cbb2cdf217c131c3272446934b736b4adff82891cbab837dff0e77888b71c6'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'D4T_RUNTIME_INSPECT.ps1') -Destination (Join-Path $downloads 'D4T_RUNTIME_INSPECT.ps1') -Force
+          $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_RUNTIME_INSPECT*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
+          if(-not $f){throw 'D4T_RUNTIME_INSPECT_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER_EXIT::$LASTEXITCODE"}
