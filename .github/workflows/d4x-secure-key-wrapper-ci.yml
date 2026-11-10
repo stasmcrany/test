@@ -1,0 +1,30 @@
+name: D4X secure key wrapper exact Windows CI
+on:
+  pull_request:
+    branches: [ master ]
+jobs:
+  exact-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact wrapper and parse
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='ci/D4X_SCIENTIFIC_PREFLIGHT_WITH_SECURE_KEY.ps1'
+          $expected='c3c76be4154def699438b68a6c850bfe7bfe48714057f5542008eb52744185e8'
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          if($sha -ne $expected){throw "D4X_SECURE_KEY_WRAPPER_SHA_MISMATCH::$sha"}
+          $bytes=(Get-Item -LiteralPath $p).Length
+          if($bytes -ne 1589){throw "D4X_SECURE_KEY_WRAPPER_BYTES_MISMATCH::$bytes"}
+          $text=Get-Content -LiteralPath $p -Raw
+          [void][scriptblock]::Create($text)
+          if($text -notmatch "Read-Host 'Paste OpenAI API key \(input hidden\)' -AsSecureString"){throw 'D4X_SECURE_KEY_WRAPPER_SECURE_PROMPT_MISSING'}
+          if($text -notmatch "ZeroFreeBSTR"){throw 'D4X_SECURE_KEY_WRAPPER_ZERO_FREE_MISSING'}
+          if($text -notmatch "-PreflightOnly"){throw 'D4X_SECURE_KEY_WRAPPER_PREFLIGHT_ONLY_MISSING'}
+          if($text -match "D4X_SCIENTIFIC_EXECUTION_STARTED_MARKER"){throw 'D4X_SECURE_KEY_WRAPPER_ONE_SHOT_MARKER_REFERENCE_FORBIDDEN'}
+          Write-Output 'D4X_SECURE_KEY_WRAPPER_EXACT_SHA=PASS'
+          Write-Output 'D4X_SECURE_KEY_WRAPPER_EXACT_BYTES=PASS'
+          Write-Output 'D4X_SECURE_KEY_WRAPPER_POWERSHELL_PARSE=PASS'
+          Write-Output 'D4X_SECURE_KEY_WRAPPER_SECURE_PROMPT=PASS'
+          Write-Output 'D4X_SECURE_KEY_WRAPPER_PREFLIGHT_ONLY=PASS'
