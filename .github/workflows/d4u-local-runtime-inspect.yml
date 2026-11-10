@@ -1,0 +1,34 @@
+name: D4U Local Runtime Inspector Exact Windows Qualification
+on:
+  pull_request:
+    branches: [chatgpt-d4u-local-runtime-inspect-base3-20261110]
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact SHA
+        shell: pwsh
+        run: |
+          $p='.ci/D4U_LOCAL_RUNTIME_INSPECT.ps1'
+          $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          if($h -ne '5e7d9bb8a1fac65648840dc907b89ead62716f2d5f78d2c31a48ffa42367cf38'){throw "HASH::$h"}
+          "EXACT_SHA=$h"
+      - name: Exact selftest
+        shell: pwsh
+        run: |
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4U_LOCAL_RUNTIME_INSPECT.ps1' -SelfTest
+          if($LASTEXITCODE -ne 0){throw "SELFTEST::$LASTEXITCODE"}
+      - name: Exact final launcher under selftest gate
+        shell: pwsh
+        env:
+          D4U_LOCAL_RUNTIME_INSPECT_SELFTEST: '1'
+        run: |
+          $h='5e7d9bb8a1fac65648840dc907b89ead62716f2d5f78d2c31a48ffa42367cf38'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item '.ci/D4U_LOCAL_RUNTIME_INSPECT.ps1' (Join-Path $downloads 'D4U_LOCAL_RUNTIME_INSPECT.ps1') -Force
+          $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4U_LOCAL_RUNTIME_INSPECT*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
+          if(-not $f){throw 'D4U_LOCAL_RUNTIME_INSPECT_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER::$LASTEXITCODE"}
