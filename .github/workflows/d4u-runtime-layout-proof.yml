@@ -1,0 +1,22 @@
+name: D4U Immutable Runtime Layout Proof
+on:
+  pull_request:
+    branches: [chatgpt-d4u-runtime-layout-proof-base-20261110]
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Inspect exact immutable runtime filesystem
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref='python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b'
+          docker pull "$ref"
+          echo "IMAGE_ID=$(docker image inspect "$ref" --format '{{.Id}}')"
+          echo "REPODIGESTS=$(docker image inspect "$ref" --format '{{json .RepoDigests}}')"
+          docker run --rm --network=none --read-only --cap-drop=ALL --security-opt=no-new-privileges "$ref" sh -lc '
+            python -c "import platform,sys; print("PYTHON="+platform.python_version()); print("EXECUTABLE="+sys.executable)"
+            for p in /opt/pyvenv/bin/python /usr/lib/python3.13 /usr/local/bin/python /usr/local/lib/python3.12 /lib/x86_64-linux-gnu/libseccomp.so.2; do
+              if [ -e "$p" ]; then echo "PATH_EXISTS=$p"; else echo "PATH_MISSING=$p"; fi
+            done
+          '
