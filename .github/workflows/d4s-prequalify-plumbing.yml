@@ -38,3 +38,14 @@ jobs:
           $path=Join-Path $env:RUNNER_TEMP 'D4S_PREQUALIFY.ps1'
           & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -PlumbingSelfTest
           if($LASTEXITCODE -ne 0){throw "PLUMBING_EXIT::$LASTEXITCODE"}
+      - name: Execute exact final launcher under plumbing gate
+        shell: pwsh
+        env:
+          D4S_PREQUALIFY_PLUMBING_SELFTEST: '1'
+        run: |
+          $src=Join-Path $env:RUNNER_TEMP 'D4S_PREQUALIFY.ps1'
+          $downloads=Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads)|Out-Null
+          Copy-Item -LiteralPath $src -Destination (Join-Path $downloads 'D4S_PREQUALIFY.ps1') -Force
+          $h='8e78219ae96bce21650e6851cf4ba8087b6d865ac2141741a2d8cc201606a95c'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4S_PREQUALIFY*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4S_PREQUALIFY_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; $env:D4S_PREQUALIFY_RUNNER_SHA256=$h; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "FINAL_LAUNCHER_EXIT::$LASTEXITCODE"}
