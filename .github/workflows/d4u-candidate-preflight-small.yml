@@ -8,19 +8,24 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Exact hash
+      - name: Reconstruct exact LF bytes and hash
         shell: pwsh
         run: |
-          $p='.ci/D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1'
-          $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          $source='.ci/D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1'
+          $exact=Join-Path $env:RUNNER_TEMP 'D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1'
+          $text=[IO.File]::ReadAllText($source)
+          $text=$text.Replace("`r`n","`n").Replace("`r","`n")
+          [IO.File]::WriteAllText($exact,$text,[Text.UTF8Encoding]::new($false))
+          $h=(Get-FileHash -Algorithm SHA256 -LiteralPath $exact).Hash.ToLowerInvariant()
           if($h -ne 'd07a6398e20cf6e0e80b71446074ddc9e698f4e45431cb42f32d4ed6e9c9dc41'){throw "HASH_MISMATCH::$h"}
           "EXACT_FILE_SHA256=$h"
-      - name: Exact self-test
+      - name: Execute exact self-test
         shell: pwsh
         run: |
-          & pwsh -NoProfile -ExecutionPolicy Bypass -File '.ci/D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1' -SelfTest
+          $exact=Join-Path $env:RUNNER_TEMP 'D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1'
+          & pwsh -NoProfile -ExecutionPolicy Bypass -File $exact -SelfTest
           if($LASTEXITCODE -ne 0){throw "SELFTEST_EXIT::$LASTEXITCODE"}
-      - name: Exact final launcher under self-test gate
+      - name: Execute exact final launcher under self-test gate
         shell: pwsh
         env:
           D4U_CANDIDATE_PREFLIGHT_SELFTEST: '1'
@@ -28,7 +33,7 @@ jobs:
           $h='d07a6398e20cf6e0e80b71446074ddc9e698f4e45431cb42f32d4ed6e9c9dc41'
           $downloads=Join-Path $HOME 'Downloads'
           [IO.Directory]::CreateDirectory($downloads)|Out-Null
-          Copy-Item -LiteralPath '.ci/D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1' -Destination (Join-Path $downloads 'D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1') -Force
+          Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1') -Destination (Join-Path $downloads 'D4U_CANDIDATE_PREFLIGHT_RUNNER.ps1') -Force
           $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4U_CANDIDATE_PREFLIGHT_RUNNER*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1
           if(-not $f){throw 'D4U_CANDIDATE_PREFLIGHT_RUNNER_FILE_NOT_FOUND_OR_HASH_MISMATCH'}
           & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
