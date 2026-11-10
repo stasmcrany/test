@@ -107,3 +107,30 @@ jobs:
           if($actual -ne $expected){ throw "PREEXEC_HASH_MISMATCH::$actual" }
           & pwsh -NoProfile -ExecutionPolicy Bypass -File $path -SelfTest
           if($LASTEXITCODE -ne 0){ throw "SELFTEST_EXIT::$LASTEXITCODE" }
+
+      - name: Execute exact launcher plumbing test
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:RUNNER_TEMP 'STOIX_VCFE_C1C2_D4S_SAME_SEED_CUSTODY_RECOVERY_FROZEN.ps1'
+          $downloads = Join-Path $HOME 'Downloads'
+          [IO.Directory]::CreateDirectory($downloads) | Out-Null
+          $dest = Join-Path $downloads 'STOIX_VCFE_C1C2_D4S_SAME_SEED_CUSTODY_RECOVERY_FROZEN.ps1'
+          [IO.File]::WriteAllBytes($dest,[IO.File]::ReadAllBytes($source))
+          $launcherBytes = [Convert]::FromBase64String('JGg9J2ExZGRlMTc1YjUzZWIzMTJmYzVkZGUzOWJhOWE4NmU1MWJhNjQ1ZTEzNjJiYTA5NzhkNTlkNWQzYzk1N2UzZGUnOyAkZj1HZXQtQ2hpbGRJdGVtIC1MaXRlcmFsUGF0aCAiJEhPTUVcRG93bmxvYWRzIiAtRmlsdGVyICdTVE9JWF9WQ0ZFX0MxQzJfRDRTX1NBTUVfU0VFRF9DVVNUT0RZX1JFQ09WRVJZX0ZST1pFTioucHMxJyAtRmlsZSB8IFdoZXJlLU9iamVjdCB7IChHZXQtRmlsZUhhc2ggLUFsZ29yaXRobSBTSEEyNTYgLUxpdGVyYWxQYXRoICRfLkZ1bGxOYW1lKS5IYXNoLlRvTG93ZXJJbnZhcmlhbnQoKSAtZXEgJGggfSB8IFNlbGVjdC1PYmplY3QgLUZpcnN0IDE7IGlmKC1ub3QgJGYpe3Rocm93ICdENFNfUkVDT1ZFUllfRklMRV9OT1RfRk9VTkRfT1JfSEFTSF9NSVNNQVRDSCd9OyAmIHB3c2ggLU5vUHJvZmlsZSAtRXhlY3V0aW9uUG9saWN5IEJ5cGFzcyAtRmlsZSAkZi5GdWxsTmFtZQ==')
+          $launcherSha = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($launcherBytes)).ToLowerInvariant()
+          if($launcherSha -ne '1683dc7579ca54e218d91098abc2edce9622a3767c5cda364c2a2fbd24a0a98d'){ throw "LAUNCHER_HASH_MISMATCH::$launcherSha" }
+          $launcher = [Text.Encoding]::UTF8.GetString($launcherBytes)
+          try {
+            $output = & ([ScriptBlock]::Create($launcher)) 2>&1
+            $childExit = $LASTEXITCODE
+            $text = ($output | Out-String)
+            $output | ForEach-Object { Write-Output $_ }
+            if($childExit -ne 2){ throw "LAUNCHER_EXPECTED_CHILD_EXIT_2_GOT::$childExit" }
+            if($text -notmatch 'D4S_RECOVERY_STATUS=FAIL'){ throw 'LAUNCHER_DID_NOT_INVOKE_RECOVERY' }
+            if($text -notmatch 'D4S_RECOVERY_START_MARKER_MISSING'){ throw 'LAUNCHER_UNEXPECTED_RECOVERY_FAILURE' }
+            Write-Output "EXACT_LAUNCHER_SHA256=$launcherSha"
+            Write-Output 'D4S_WINDOWS_LAUNCHER_PLUMBING=PASS'
+          } finally {
+            [Array]::Clear($launcherBytes,0,$launcherBytes.Length)
+            Remove-Item -LiteralPath $dest -Force -ErrorAction SilentlyContinue
+          }
