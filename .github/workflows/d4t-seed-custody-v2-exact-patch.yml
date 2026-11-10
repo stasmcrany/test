@@ -14,7 +14,7 @@ jobs:
           $py=@'
           import base64, gzip, hashlib, pathlib, re
           
-          wf = pathlib.Path(".github/workflows/d4t-seed-custody-exact.yml").read_text(encoding="utf-8")
+          wf = pathlib.Path(".ci/OLD_D4T_SEED_CUSTODY_EXACT_WORKFLOW_SOURCE.txt").read_text(encoding="utf-8")
           m = re.search(r"\$b64=(.*?)(?:\r?\n)\s*\$gz=", wf, re.S)
           if not m:
               raise SystemExit("OLD_RUNNER_B64_BLOCK_NOT_FOUND")
