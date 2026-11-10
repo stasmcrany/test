@@ -1,0 +1,1 @@
+Trigger final exact D4S recovery + launcher Windows verification.
