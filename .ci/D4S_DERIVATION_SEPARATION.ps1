@@ -13,6 +13,7 @@ $NamespaceProvenanceSha='5f014b0cd66181df89670bb0f40d8dc93b817622f88c64632d4b883
 $NamespaceProvenanceJson=@'
 {"entry_inventory_sha256":"df5d2c9ec9e25aa65f5ba9067edb4038aca40f70240b00a9a266925928468497","literal_prefix":"D4S-FIXTURE|","predecessor_bundle_sha256":"bc67ccc3572083877ef13e70d8171eaa346085964101492124d13bc34ad14cc3","prior_scope_hit_count":0,"result":"PASS","scanned_entry_count":101,"scanned_uncompressed_bytes":853901,"schema":"D4S_NAMESPACE_PRIOR_SEARCH_PROVENANCE_v1","study_id":"STOIX-VCFE-C1C2-D4S-FC-20261110-01"}
 '@
+$NamespaceProvenanceJson += "`n"
 
 $HistoricalCommitments=@(
 'c4e8136ff4bb7f433ee6f2b4fdac102d1954bd9eb92c7017af1a2c153d85b163',
