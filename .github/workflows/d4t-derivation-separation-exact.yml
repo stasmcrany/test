@@ -1,0 +1,98 @@
+name: D4T Derivation Separation Exact Windows Self-Test
+on:
+  pull_request:
+    branches:
+      - chatgpt-d4t-separation-ci-base-20261110
+jobs:
+  exact:
+    runs-on: windows-latest
+    steps:
+      - name: Reconstruct exact frozen file
+        shell: pwsh
+        run: |
+          $b64=@'
+          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
+          sSgCOP3/AGLEoRmANwAA
+          '@
+          $gz=[Convert]::FromBase64String(($b64 -replace '\s',''))
+          $mi=[IO.MemoryStream]::new($gz)
+          $zs=[IO.Compression.GZipStream]::new($mi,[IO.Compression.CompressionMode]::Decompress)
+          $mo=[IO.MemoryStream]::new()
+          try {
+            $zs.CopyTo($mo); $bytes=$mo.ToArray()
+            $downloads=Join-Path $HOME 'Downloads'
+            [IO.Directory]::CreateDirectory($downloads)|Out-Null
+            $path=Join-Path $downloads 'D4T_DERIVATION_SEPARATION.ps1'
+            [IO.File]::WriteAllBytes($path,$bytes)
+            $actual=(Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+            if($actual -ne 'b8e3948625f52689f4ecac00f4a88e674efd22ea48a8324cd266fa712c5dc073'){throw "HASH_MISMATCH::$actual"}
+            "D4T_SEPARATION_EXACT_HASH=PASS::$actual"
+          } finally {
+            if($bytes){[Array]::Clear($bytes,0,$bytes.Length)}
+            $mo.Dispose();$zs.Dispose();$mi.Dispose();[Array]::Clear($gz,0,$gz.Length)
+          }
+      - name: Execute exact future launcher
+        shell: pwsh
+        env:
+          D4T_DERIVATION_SEPARATION_SELFTEST: '1'
+        run: |
+          $h='b8e3948625f52689f4ecac00f4a88e674efd22ea48a8324cd266fa712c5dc073'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_DERIVATION_SEPARATION*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_DERIVATION_SEPARATION_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "LAUNCHER_EXIT::$LASTEXITCODE"}
