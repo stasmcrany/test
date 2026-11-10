@@ -1,0 +1,20 @@
+name: D4U Python312 LDD Proof
+on:
+  pull_request:
+    branches: [chatgpt-d4u-runtime-layout-proof-base-20261110]
+jobs:
+  prove:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Exact Python312 dynamic dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          ref='python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b'
+          docker pull "$ref" >/dev/null
+          echo 'REALPATH:'
+          docker run --rm --network=none --read-only "$ref" readlink -f /usr/local/bin/python
+          echo 'LDD:'
+          docker run --rm --network=none --read-only "$ref" ldd /usr/local/bin/python
+          echo 'LIBPYTHON:'
+          docker run --rm --network=none --read-only "$ref" sh -c 'ls -l /usr/local/lib/libpython*'
