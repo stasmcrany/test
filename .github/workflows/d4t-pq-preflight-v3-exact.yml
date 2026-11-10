@@ -50,4 +50,6 @@ jobs:
         env:
           D4T_PQ_PREFLIGHT_SELFTEST: '1'
         run: |
-          $h='69d837a2cd1fc933d0c35ef45d1852d5b9ee199fa8d8c63e4dcc36e5b0371f7a'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_PQ_PREFLIGHT_V5*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_PQ_PREFLIGHT_V5_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; $lines=@(& pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName 2>&1); $exit=$LASTEXITCODE; $lines | ForEach-Object { "$_" }; if($exit -ne 0){throw "D4T_PQ_PREFLIGHT_V5_SELFTEST_EXIT::$exit"}; $joined=$lines -join "`n"; foreach($m in @('D4T_PQ_PREFLIGHT_SELFTEST_ARGUMENT_TRANSPORT=PASS','D4T_PQ_PREFLIGHT_WINDOWS_SELFTEST=PASS')){if(-not $joined.Contains($m)){throw "D4T_PQ_PREFLIGHT_V5_MISSING::$m"}}; 'D4T_PQ_PREFLIGHT_V5_EXACT_FINAL_LAUNCHER=PASS'
+          $h='69d837a2cd1fc933d0c35ef45d1852d5b9ee199fa8d8c63e4dcc36e5b0371f7a'; $f=Get-ChildItem -LiteralPath "$HOME\Downloads" -Filter 'D4T_PQ_PREFLIGHT_V5*.ps1' -File | Where-Object { (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() -eq $h } | Select-Object -First 1; if(-not $f){throw 'D4T_PQ_PREFLIGHT_V5_FILE_NOT_FOUND_OR_HASH_MISMATCH'}; & pwsh -NoProfile -ExecutionPolicy Bypass -File $f.FullName
+          if($LASTEXITCODE -ne 0){throw "D4T_PQ_PREFLIGHT_V5_EXACT_FINAL_LAUNCHER_EXIT::$LASTEXITCODE"}
+          'D4T_PQ_PREFLIGHT_V5_EXACT_FINAL_LAUNCHER=PASS'
