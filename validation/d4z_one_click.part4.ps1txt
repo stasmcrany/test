@@ -1,0 +1,118 @@
+    if ($LASTEXITCODE -ne 0) { throw "RUNNER_CONFIGURATION_FAILED::$LASTEXITCODE" }
+} finally {
+    Pop-Location
+    $RegistrationToken = $null
+}
+Write-Host "RUNNER_NAME=$RunnerName"
+
+Confirm-ExactWord -Prompt 'Commit verified. Repository policy requires separate push authorization.' -Word 'PUSH'
+
+Write-Step 'Push isolated qualification branch'
+Invoke-Native $GitPath @('-C',$RepoRoot,'push','--set-upstream','origin',$Branch) 'GIT_PUSH_FAILED'
+
+Write-Step 'Locate queued D4Z workflow run'
+$Run = $null
+$Deadline = (Get-Date).AddMinutes(2)
+do {
+    Start-Sleep -Seconds 3
+    $Json = & $GhPath run list --repo $RepoFullName --branch $Branch --limit 20 --json 'databaseId,name,status,conclusion,headSha,url,createdAt'
+    if ($LASTEXITCODE -ne 0) { throw "GH_RUN_LIST_FAILED::$LASTEXITCODE" }
+    $Runs = @($Json | ConvertFrom-Json)
+    $Run = $Runs |
+        Where-Object { $_.name -eq $WorkflowName -and $_.headSha -eq $CommitSha } |
+        Sort-Object createdAt -Descending |
+        Select-Object -First 1
+} while (-not $Run -and (Get-Date) -lt $Deadline)
+
+Assert-True ($null -ne $Run) 'D4Z_WORKFLOW_RUN_NOT_CREATED'
+$RunId = [int64]$Run.databaseId
+Write-Host "WORKFLOW_RUN_ID=$RunId"
+Write-Host "WORKFLOW_RUN_URL=$($Run.url)"
+
+Write-Step 'Run the ephemeral self-hosted runner'
+Push-Location $RunnerRoot
+try {
+    & .\run.cmd
+    if ($LASTEXITCODE -ne 0) { throw "EPHEMERAL_RUNNER_EXIT::$LASTEXITCODE" }
+} finally {
+    Pop-Location
+}
+
+Write-Step 'Verify GitHub workflow conclusion'
+$RunViewJson = & $GhPath run view $RunId --repo $RepoFullName --json 'status,conclusion,url,headSha'
+if ($LASTEXITCODE -ne 0) { throw "GH_RUN_VIEW_FAILED::$LASTEXITCODE" }
+$RunView = $RunViewJson | ConvertFrom-Json
+Assert-True ($RunView.headSha -eq $CommitSha) 'WORKFLOW_HEAD_SHA_MISMATCH'
+if ($RunView.status -ne 'completed' -or $RunView.conclusion -ne 'success') {
+    & $GhPath run view $RunId --repo $RepoFullName --log-failed
+    throw "D4Z_TARGET_RUNTIME_WORKFLOW_NOT_SUCCESS::$($RunView.status)::$($RunView.conclusion)"
+}
+
+Write-Step 'Download and verify qualification evidence'
+New-Item -ItemType Directory -Path $EvidenceRoot -Force | Out-Null
+Invoke-Native $GhPath @(
+    'run','download',[string]$RunId,'--repo',$RepoFullName,
+    '--name',$ArtifactName,'--dir',$EvidenceRoot
+) 'GH_RUN_ARTIFACT_DOWNLOAD_FAILED'
+
+$ReceiptPath = Join-Path $EvidenceRoot 'D4Z_PATH_A_TARGET_RUNTIME_QUALIFICATION_RECEIPT.json'
+$QualificationReceipt = Test-Receipt -ReceiptPath $ReceiptPath
+$ReceiptSha = Get-Sha256Lower $ReceiptPath
+
+$BootstrapReceiptPath = Join-Path $WorkRoot 'D4Z_ONE_CLICK_SELF_HOSTED_BOOTSTRAP_RECEIPT.json'
+$BootstrapReceipt = [ordered]@{
+    schema = 'D4Z_ONE_CLICK_SELF_HOSTED_BOOTSTRAP_RECEIPT_v1'
+    study_id = 'STOIX-VCFE-C1C2-D4Z-FC-20261110-01'
+    package_sha256 = $ExpectedPackageSha256
+    actions_runner = [ordered]@{
+        version = $RunnerVersion
+        archive_sha256 = $RunnerArchiveSha256
+        name = $RunnerName
+        mode = 'EPHEMERAL'
+    }
+    repository = $RepoFullName
+    branch = $Branch
+    commit_sha = $CommitSha
+    workflow_run_id = $RunId
+    workflow_run_url = [string]$RunView.url
+    workflow_conclusion = [string]$RunView.conclusion
+    target_runtime_receipt_sha256 = $ReceiptSha
+    target_runtime_python = [string]$QualificationReceipt.runtime.python
+    historical_inventory_verified = [int]$QualificationReceipt.historical_inventory.verified_entries
+    offline_tests_passed = [int]$QualificationReceipt.offline_unit_tests.passed
+    offline_tests_total = [int]$QualificationReceipt.offline_unit_tests.total
+    synthetic_logical_cells = [int]$QualificationReceipt.synthetic_protocol_replay.logical_cells
+    live_http_post_dispatches = [int]$QualificationReceipt.synthetic_protocol_replay.client_post_dispatches
+    model_calls = [int]$QualificationReceipt.synthetic_protocol_replay.model_calls
+    production_seed_custody_reads = [int]$QualificationReceipt.seed_custody.production_seed_custody_reads
+    scientific_execution_started = [bool]$QualificationReceipt.scientific_execution_started
+    live_dispatch_authorized = [bool]$QualificationReceipt.live_dispatch_authorized
+    result = 'PASS'
+}
+$BootstrapReceipt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $BootstrapReceiptPath -Encoding UTF8
+
+Write-Step 'Cleanup ephemeral runner files'
+try {
+    Remove-Item -LiteralPath $RunnerRoot -Recurse -Force -ErrorAction Stop
+} catch {
+    Write-Warning "Runner directory cleanup failed; remove manually after inspection: $RunnerRoot"
+}
+Remove-Item -LiteralPath $RunnerZip -Force -ErrorAction SilentlyContinue
+
+[pscustomobject]@{
+    D4Z_ONE_CLICK = 'PASS'
+    WORK_ROOT = $WorkRoot
+    REPOSITORY = $RepoFullName
+    BRANCH = $Branch
+    COMMIT_SHA = $CommitSha
+    WORKFLOW_RUN_ID = $RunId
+    WORKFLOW_RUN_URL = [string]$RunView.url
+    TARGET_RUNTIME_PYTHON = [string]$QualificationReceipt.runtime.python
+    HISTORICAL_INVENTORY = "$($QualificationReceipt.historical_inventory.verified_entries)/96"
+    OFFLINE_TESTS = "$($QualificationReceipt.offline_unit_tests.passed)/$($QualificationReceipt.offline_unit_tests.total)"
+    LIVE_HTTP_POSTS = [int]$QualificationReceipt.synthetic_protocol_replay.client_post_dispatches
+    MODEL_CALLS = [int]$QualificationReceipt.synthetic_protocol_replay.model_calls
+    PRODUCTION_SEED_READS = [int]$QualificationReceipt.seed_custody.production_seed_custody_reads
+    BOOTSTRAP_RECEIPT = $BootstrapReceiptPath
+    TARGET_RUNTIME_RECEIPT = $ReceiptPath
+} | Format-List
