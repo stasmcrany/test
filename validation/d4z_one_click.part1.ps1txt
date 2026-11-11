@@ -1,0 +1,130 @@
+[CmdletBinding()]
+param(
+    [string]$PackageZip,
+    [string]$InstallRoot,
+    [switch]$SelfTest
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+
+$ExpectedPackageSha256 = 'a1959b53a8b4b165c58ded83bc3bef8e51f1881bf5bd40541c2e749fe8f8b736'
+$RepoFullName = 'stasmcrany/stoixdome_recovery'
+$RepoUrl = 'https://github.com/stasmcrany/stoixdome_recovery'
+$BaseBranch = 'main'
+$Branch = 'chatgpt-d4z-path-a-runtime-qualification-20261111'
+$WorkflowPath = '.github/workflows/d4z-path-a-self-hosted-target-runtime.yml'
+$WorkflowName = 'D4Z Path A exact target-runtime qualification (self-hosted)'
+$ArtifactName = 'D4Z-PATH-A-TARGET-RUNTIME-QUALIFICATION'
+$RunnerVersion = '2.338.2'
+$RunnerArchiveName = "actions-runner-win-x64-$RunnerVersion.zip"
+$RunnerArchiveUrl = "https://github.com/actions/runner/releases/download/v$RunnerVersion/$RunnerArchiveName"
+$RunnerArchiveSha256 = 'a1f17aa987fc8158bc7521d284912267a0d01b7c2c4684b33c86783b5e8221cc'
+
+$AllowedRepoFiles = @(
+    '.github/workflows/d4z-path-a-self-hosted-target-runtime.yml',
+    'D4Z_PATH_A_FROZEN_CANDIDATE_SOURCE.zip',
+    'D4Z_PATH_A_SELF_HOSTED_RUNNER_MANIFEST.json',
+    'scripts/d4z_path_a_target_runtime_qualification.py'
+)
+
+function Write-Step([string]$Message) {
+    Write-Host ""
+    Write-Host "=== $Message ===" -ForegroundColor Cyan
+}
+
+function Get-Sha256Lower([string]$Path) {
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Assert-True([bool]$Condition, [string]$Code) {
+    if (-not $Condition) { throw $Code }
+}
+
+function Invoke-Native([string]$FilePath, [string[]]$Arguments, [string]$FailureCode) {
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "$FailureCode::$LASTEXITCODE"
+    }
+}
+
+function Resolve-Package {
+    param([string]$ExplicitPath)
+
+    $Candidates = New-Object System.Collections.Generic.List[string]
+
+    if ($ExplicitPath) {
+        $Candidates.Add((Resolve-Path -LiteralPath $ExplicitPath -ErrorAction Stop).Path)
+    } else {
+        $Roots = @()
+        if ($PSScriptRoot) { $Roots += $PSScriptRoot }
+        $Roots += (Get-Location).Path
+        if ($HOME) {
+            $Roots += (Join-Path $HOME 'Downloads')
+            $Roots += $HOME
+        }
+
+        foreach ($Root in ($Roots | Select-Object -Unique)) {
+            if (-not (Test-Path -LiteralPath $Root -PathType Container)) { continue }
+            Get-ChildItem -LiteralPath $Root -Filter 'D4Z_PATH_A_SELF_HOSTED_RUNNER_CANDIDATE*.zip' -File -ErrorAction SilentlyContinue |
+                ForEach-Object { $Candidates.Add($_.FullName) }
+        }
+    }
+
+    foreach ($Candidate in ($Candidates | Select-Object -Unique)) {
+        try {
+            if ((Get-Sha256Lower $Candidate) -eq $ExpectedPackageSha256) {
+                return $Candidate
+            }
+        } catch {}
+    }
+
+    throw 'D4Z_SELF_HOSTED_PACKAGE_NOT_FOUND_OR_HASH_MISMATCH'
+}
+
+function Expand-And-VerifyPackage {
+    param(
+        [string]$ZipPath,
+        [string]$Destination
+    )
+
+    if (Test-Path -LiteralPath $Destination) {
+        Remove-Item -LiteralPath $Destination -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Expand-Archive -LiteralPath $ZipPath -DestinationPath $Destination -Force
+
+    $ManifestPath = Join-Path $Destination 'D4Z_PATH_A_SELF_HOSTED_RUNNER_MANIFEST.json'
+    Assert-True (Test-Path -LiteralPath $ManifestPath -PathType Leaf) 'D4Z_PACKAGE_MANIFEST_MISSING'
+    $Manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+
+    foreach ($Item in $Manifest.files) {
+        $FilePath = Join-Path $Destination ([string]$Item.path)
+        Assert-True (Test-Path -LiteralPath $FilePath -PathType Leaf) "D4Z_PACKAGE_FILE_MISSING::$($Item.path)"
+        $Actual = Get-Sha256Lower $FilePath
+        $Expected = ([string]$Item.sha256).ToLowerInvariant()
+        Assert-True ($Actual -eq $Expected) "D4Z_PACKAGE_FILE_HASH_MISMATCH::$($Item.path)::$Actual"
+        $Bytes = (Get-Item -LiteralPath $FilePath).Length
+        Assert-True ($Bytes -eq [int64]$Item.bytes) "D4Z_PACKAGE_FILE_SIZE_MISMATCH::$($Item.path)::$Bytes"
+    }
+
+    return $Manifest
+}
+
+function Ensure-WindowsCommand {
+    param(
+        [string]$CommandName,
+        [string]$WingetId,
+        [string[]]$FallbackPaths
+    )
+
+    $Cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
+    if ($Cmd) { return $Cmd.Source }
+
+    foreach ($Path in $FallbackPaths) {
+        if ($Path -and (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            return $Path
+        }
+    }
+
