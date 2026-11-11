@@ -1,0 +1,75 @@
+name: D4Z one-click PowerShell exact verification
+
+on:
+  push:
+    branches:
+      - chatgpt-d4z-one-click-script-verify-20261111
+    paths:
+      - "validation/d4z_one_click.part1.ps1txt"
+      - "validation/d4z_one_click.part2.ps1txt"
+      - "validation/d4z_one_click.part3.ps1txt"
+      - "validation/d4z_one_click.part4.ps1txt"
+      - ".github/workflows/d4z-one-click-script-verify.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Assemble exact LF-normalized script and verify SHA256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $parts=@(
+            'validation/d4z_one_click.part1.ps1txt',
+            'validation/d4z_one_click.part2.ps1txt',
+            'validation/d4z_one_click.part3.ps1txt',
+            'validation/d4z_one_click.part4.ps1txt'
+          )
+          $content=''
+          foreach($p in $parts){
+            $content += (Get-Content -LiteralPath $p -Raw)
+          }
+          $content = $content -replace "`r`n","`n"
+          $out=Join-Path $env:RUNNER_TEMP 'D4Z_PATH_A_ONE_CLICK_SELF_HOSTED.ps1'
+          [System.IO.File]::WriteAllText($out,$content,[System.Text.UTF8Encoding]::new($false))
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $out).Hash.ToLowerInvariant()
+          if($sha -ne '9fa26170a488573a7b0755ecfe963a7b8799cda7805cebd0744b13dfda3c3f79'){throw "SCRIPT_SHA256_MISMATCH::$sha"}
+          "D4Z_ONE_CLICK_SCRIPT=$out" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "D4Z_ONE_CLICK_SHA256=$sha"
+
+      - name: Parse exact PowerShell script
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tokens=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            $env:D4Z_ONE_CLICK_SCRIPT,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if($errors.Count -ne 0){
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "POWERSHELL_PARSE_ERRORS::$($errors.Count)"
+          }
+          Write-Host 'D4Z_ONE_CLICK_PARSE=PASS'
+
+      - name: Execute exact script self-test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $output = & pwsh -NoProfile -ExecutionPolicy Bypass -File $env:D4Z_ONE_CLICK_SCRIPT -SelfTest 2>&1 | Out-String
+          $rc=$LASTEXITCODE
+          Write-Host $output
+          if($rc -ne 0){throw "D4Z_ONE_CLICK_SELFTEST_EXIT::$rc"}
+          if($output -notmatch 'SELFTEST\s*:\s*PASS'){throw 'D4Z_ONE_CLICK_SELFTEST_MARKER_MISSING'}
+          if($output -notmatch 'LIVE_HTTP_POSTS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_LIVE_POSTS_NOT_ZERO'}
+          if($output -notmatch 'MODEL_CALLS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_MODEL_CALLS_NOT_ZERO'}
+          if($output -notmatch 'PRODUCTION_SEED_READS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_SEED_READS_NOT_ZERO'}
+          Write-Host 'D4Z_ONE_CLICK_SELFTEST=PASS'
