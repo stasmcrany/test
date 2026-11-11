@@ -1,0 +1,130 @@
+    $Winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+    if (-not $Winget) { throw "REQUIRED_COMMAND_MISSING_NO_WINGET::$CommandName" }
+
+    Write-Step "Installing $CommandName"
+    Invoke-Native $Winget.Source @(
+        'install', '--id', $WingetId, '--exact',
+        '--accept-package-agreements', '--accept-source-agreements',
+        '--silent'
+    ) "WINGET_INSTALL_FAILED::$WingetId"
+
+    $env:PATH = @(
+        "$env:ProgramFiles\GitHub CLI",
+        "$env:ProgramFiles\Git\cmd",
+        "$env:PATH"
+    ) -join ';'
+
+    $Cmd = Get-Command $CommandName -ErrorAction SilentlyContinue
+    if ($Cmd) { return $Cmd.Source }
+
+    foreach ($Path in $FallbackPaths) {
+        if ($Path -and (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            return $Path
+        }
+    }
+
+    throw "REQUIRED_COMMAND_INSTALL_DID_NOT_SURFACE::$CommandName"
+}
+
+function Verify-CopiedRepoFiles {
+    param(
+        [string]$PackageRoot,
+        [string]$RepoRoot
+    )
+
+    foreach ($Rel in $AllowedRepoFiles) {
+        $Source = Join-Path $PackageRoot $Rel
+        $Target = Join-Path $RepoRoot $Rel
+        Assert-True (Test-Path -LiteralPath $Source -PathType Leaf) "PACKAGE_REPO_FILE_MISSING::$Rel"
+        Assert-True (Test-Path -LiteralPath $Target -PathType Leaf) "REPO_FILE_COPY_MISSING::$Rel"
+        $SourceHash = Get-Sha256Lower $Source
+        $TargetHash = Get-Sha256Lower $Target
+        Assert-True ($SourceHash -eq $TargetHash) "REPO_FILE_COPY_HASH_MISMATCH::$Rel"
+    }
+}
+
+function Confirm-ExactWord {
+    param([string]$Prompt, [string]$Word)
+    $Value = Read-Host "$Prompt Type exactly: $Word"
+    if ($Value -cne $Word) {
+        throw "USER_DID_NOT_AUTHORIZE_$Word"
+    }
+}
+
+function Test-Receipt {
+    param([string]$ReceiptPath)
+
+    Assert-True (Test-Path -LiteralPath $ReceiptPath -PathType Leaf) 'TARGET_RUNTIME_QUALIFICATION_RECEIPT_MISSING'
+    $R = Get-Content -LiteralPath $ReceiptPath -Raw | ConvertFrom-Json
+
+    Assert-True ($R.status -eq 'PASS_NON_LIVE_SYNTHETIC_QUALIFICATION') 'QUALIFICATION_STATUS_NOT_PASS'
+    Assert-True ($R.runtime.python -eq '3.12.16') 'QUALIFICATION_PYTHON_NOT_3_12_16'
+    Assert-True ($R.runtime.exact_target_runtime -eq $true) 'EXACT_TARGET_RUNTIME_NOT_PROVEN'
+    Assert-True ($R.historical_inventory.status -eq 'PASS') 'HISTORICAL_INVENTORY_NOT_PASS'
+    Assert-True ([int]$R.historical_inventory.verified_entries -eq 96) 'HISTORICAL_INVENTORY_NOT_96_OF_96'
+    Assert-True ([int]$R.offline_unit_tests.passed -eq 44) 'OFFLINE_TESTS_PASSED_NOT_44'
+    Assert-True ([int]$R.offline_unit_tests.total -eq 44) 'OFFLINE_TESTS_TOTAL_NOT_44'
+
+    $S = $R.synthetic_protocol_replay
+    Assert-True ([int]$S.logical_cells -eq 30) 'SYNTHETIC_LOGICAL_CELLS_NOT_30'
+    Assert-True ([int]$S.synthetic_transport_invocations -eq 30) 'SYNTHETIC_TRANSPORT_INVOCATIONS_NOT_30'
+    Assert-True ([int]$S.empty_candidates_rejected_by_real_verifier -eq 30) 'REAL_VERIFIER_REJECTIONS_NOT_30'
+    Assert-True ([int]$S.client_post_dispatches -eq 0) 'LIVE_CLIENT_POST_DISPATCH_DETECTED'
+    Assert-True ([int]$S.model_calls -eq 0) 'MODEL_CALL_DETECTED'
+    Assert-True ([int]$S.scientific_executions -eq 0) 'SCIENTIFIC_EXECUTION_DETECTED'
+    Assert-True ([int]$S.transport_retries -eq 0) 'TRANSPORT_RETRY_DETECTED'
+    Assert-True ([int]$R.network.blocked_attempts -eq 0) 'NETWORK_ATTEMPT_DETECTED'
+    Assert-True ([int]$R.seed_custody.production_seed_custody_reads -eq 0) 'PRODUCTION_SEED_CUSTODY_READ_DETECTED'
+    Assert-True ($R.seed_custody.production_master_seed_accessed -eq $false) 'PRODUCTION_MASTER_SEED_ACCESS_DETECTED'
+    Assert-True ($R.live_dispatch_authorized -eq $false) 'LIVE_DISPATCH_WAS_AUTHORIZED'
+    Assert-True ($R.scientific_execution_started -eq $false) 'SCIENTIFIC_EXECUTION_WAS_STARTED'
+    Assert-True ($R.actual_d4z_prequalification_performed -eq $false) 'ACTUAL_D4Z_PREQUALIFICATION_PERFORMED'
+
+    return $R
+}
+
+if ($SelfTest) {
+    Write-Step 'D4Z one-click script self-test'
+    Assert-True ($ExpectedPackageSha256.Length -eq 64) 'SELFTEST_PACKAGE_HASH_FORMAT_FAIL'
+    Assert-True ($RunnerArchiveSha256.Length -eq 64) 'SELFTEST_RUNNER_HASH_FORMAT_FAIL'
+    Assert-True ($RunnerVersion -eq '2.338.2') 'SELFTEST_RUNNER_VERSION_FAIL'
+    Assert-True ($RepoFullName -eq 'stasmcrany/stoixdome_recovery') 'SELFTEST_REPO_BINDING_FAIL'
+    Assert-True ($Branch -eq 'chatgpt-d4z-path-a-runtime-qualification-20261111') 'SELFTEST_BRANCH_BINDING_FAIL'
+    Assert-True ($AllowedRepoFiles.Count -eq 4) 'SELFTEST_ALLOWED_FILE_COUNT_FAIL'
+
+    $PackageStatus = 'SKIPPED_NO_PACKAGE'
+    $PackageFilesVerified = 0
+    if ($PackageZip) {
+        $ResolvedPackage = Resolve-Package -ExplicitPath $PackageZip
+        Assert-True ((Get-Sha256Lower $ResolvedPackage) -eq $ExpectedPackageSha256) 'SELFTEST_PACKAGE_HASH_FAIL'
+        $Temp = Join-Path ([System.IO.Path]::GetTempPath()) ("d4z-selftest-" + [guid]::NewGuid().ToString('N'))
+        try {
+            $Manifest = Expand-And-VerifyPackage -ZipPath $ResolvedPackage -Destination $Temp
+            Assert-True ($Manifest.target_repository -eq $RepoFullName) 'SELFTEST_PACKAGE_REPO_BINDING_FAIL'
+            Assert-True ($Manifest.trigger_branch -eq $Branch) 'SELFTEST_PACKAGE_BRANCH_BINDING_FAIL'
+            Assert-True ($Manifest.workflow_path -eq $WorkflowPath) 'SELFTEST_WORKFLOW_BINDING_FAIL'
+            Assert-True ($Manifest.runtime_python -eq '3.12.16') 'SELFTEST_RUNTIME_VERSION_FAIL'
+            Assert-True ([int]$Manifest.github_hosted_minutes_consumed -eq 0) 'SELFTEST_HOSTED_MINUTES_FIELD_FAIL'
+
+            $WorkflowText = Get-Content -LiteralPath (Join-Path $Temp $WorkflowPath) -Raw
+            Assert-True ($WorkflowText.Contains('runs-on: [self-hosted, windows, x64, d4z-linux-docker]')) 'SELFTEST_RUNNER_LABEL_FAIL'
+            Assert-True ($WorkflowText.Contains('python@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b')) 'SELFTEST_RUNTIME_DIGEST_FAIL'
+            Assert-True ($WorkflowText.Contains('--network=none')) 'SELFTEST_NETWORK_NONE_FAIL'
+
+            $PackageStatus = 'PASS'
+            $PackageFilesVerified = @($Manifest.files).Count
+        } finally {
+            if (Test-Path -LiteralPath $Temp) {
+                Remove-Item -LiteralPath $Temp -Recurse -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+
+    [pscustomobject]@{
+        SELFTEST = 'PASS'
+        PACKAGE_VALIDATION = $PackageStatus
+        PACKAGE_FILES_VERIFIED = $PackageFilesVerified
+        TARGET_REPOSITORY = $RepoFullName
+        TARGET_BRANCH = $Branch
+        RUNNER_VERSION = $RunnerVersion
+        RUNNER_ARCHIVE_SHA256 = $RunnerArchiveSha256
