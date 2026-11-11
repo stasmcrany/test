@@ -1,0 +1,130 @@
+        TARGET_PYTHON = '3.12.16'
+        LIVE_HTTP_POSTS = 0
+        MODEL_CALLS = 0
+        PRODUCTION_SEED_READS = 0
+    } | Format-List
+    exit 0
+}
+
+$ResolvedPackage = Resolve-Package -ExplicitPath $PackageZip
+Assert-True ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) 'WINDOWS_HOST_REQUIRED'
+
+if (-not $InstallRoot) {
+    Assert-True ([bool]$env:LOCALAPPDATA) 'LOCALAPPDATA_NOT_AVAILABLE'
+    $InstallRoot = Join-Path $env:LOCALAPPDATA 'STOIXLAB\VCFE\D4Z_Path_A_SelfHosted'
+}
+
+$RunStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+$WorkRoot = Join-Path $InstallRoot $RunStamp
+$PackageRoot = Join-Path $WorkRoot 'package'
+$RepoRoot = Join-Path $WorkRoot 'repo'
+$RunnerRoot = Join-Path $env:SystemDrive "actions-runner-d4z-$RunStamp"
+$EvidenceRoot = Join-Path $WorkRoot 'evidence'
+$RunnerZip = Join-Path $WorkRoot $RunnerArchiveName
+
+Write-Step 'Verify and unpack D4Z package'
+New-Item -ItemType Directory -Path $WorkRoot -Force | Out-Null
+Assert-True ((Get-Sha256Lower $ResolvedPackage) -eq $ExpectedPackageSha256) 'D4Z_PACKAGE_HASH_MISMATCH'
+$Manifest = Expand-And-VerifyPackage -ZipPath $ResolvedPackage -Destination $PackageRoot
+Write-Host "PACKAGE_ROOT=$PackageRoot"
+Write-Host "PACKAGE_SHA256=$ExpectedPackageSha256"
+
+Write-Step 'Preflight Docker Desktop and exact target runtime'
+$Preflight = Join-Path $PackageRoot 'scripts\Test-D4ZSelfHostedRunner.ps1'
+Assert-True (Test-Path -LiteralPath $Preflight -PathType Leaf) 'D4Z_PREFLIGHT_SCRIPT_MISSING'
+& $Preflight
+if ($LASTEXITCODE -ne 0) { throw "D4Z_PREFLIGHT_FAILED::$LASTEXITCODE" }
+
+Write-Step 'Ensure Git and GitHub CLI'
+$GitPath = Ensure-WindowsCommand -CommandName 'git.exe' -WingetId 'Git.Git' -FallbackPaths @(
+    "$env:ProgramFiles\Git\cmd\git.exe",
+    "${env:ProgramFiles(x86)}\Git\cmd\git.exe"
+)
+$GhPath = Ensure-WindowsCommand -CommandName 'gh.exe' -WingetId 'GitHub.cli' -FallbackPaths @(
+    "$env:ProgramFiles\GitHub CLI\gh.exe"
+)
+
+Write-Step 'Verify GitHub authentication'
+& $GhPath auth status --hostname github.com
+if ($LASTEXITCODE -ne 0) {
+    & $GhPath auth login --hostname github.com --git-protocol https --web --scopes 'repo,workflow'
+    if ($LASTEXITCODE -ne 0) { throw "GH_AUTH_LOGIN_FAILED::$LASTEXITCODE" }
+}
+$Login = (& $GhPath api user --jq '.login').Trim()
+Assert-True ($LASTEXITCODE -eq 0) 'GH_USER_LOOKUP_FAILED'
+Assert-True ($Login -eq 'stasmcrany') "WRONG_GITHUB_ACCOUNT::$Login"
+
+Write-Step 'Clone private repository into isolated work directory'
+Invoke-Native $GhPath @('repo','clone',$RepoFullName,$RepoRoot,'--','--branch',$BaseBranch,'--single-branch') 'GH_REPO_CLONE_FAILED'
+$Dirty = @(& $GitPath -C $RepoRoot status --porcelain)
+Assert-True ($Dirty.Count -eq 0) 'CLONED_REPOSITORY_NOT_CLEAN'
+
+& $GitPath -C $RepoRoot ls-remote --exit-code --heads origin "refs/heads/$Branch" | Out-Null
+$BranchProbeExit = $LASTEXITCODE
+if ($BranchProbeExit -eq 0) { throw "REMOTE_QUALIFICATION_BRANCH_ALREADY_EXISTS::$Branch" }
+if ($BranchProbeExit -ne 2) { throw "REMOTE_BRANCH_PROBE_FAILED::$BranchProbeExit" }
+
+Invoke-Native $GitPath @('-C',$RepoRoot,'checkout','-b',$Branch) 'GIT_CREATE_BRANCH_FAILED'
+
+Write-Step 'Copy only the bounded qualification files'
+foreach ($Rel in $AllowedRepoFiles) {
+    $Source = Join-Path $PackageRoot $Rel
+    $Target = Join-Path $RepoRoot $Rel
+    $Parent = Split-Path -Parent $Target
+    New-Item -ItemType Directory -Path $Parent -Force | Out-Null
+    Copy-Item -LiteralPath $Source -Destination $Target -Force
+}
+Verify-CopiedRepoFiles -PackageRoot $PackageRoot -RepoRoot $RepoRoot
+
+Invoke-Native $GitPath (@('-C',$RepoRoot,'add','--') + $AllowedRepoFiles) 'GIT_STAGE_FAILED'
+$Staged = @(& $GitPath -C $RepoRoot diff --cached --name-only)
+$ExpectedStaged = @($AllowedRepoFiles | Sort-Object)
+$ActualStaged = @($Staged | Sort-Object)
+$Diff = @(Compare-Object -ReferenceObject $ExpectedStaged -DifferenceObject $ActualStaged)
+Assert-True ($Diff.Count -eq 0) ("STAGED_FILE_SET_MISMATCH::" + ($ActualStaged -join ','))
+
+Write-Host ""
+Write-Host 'STAGED FILES:' -ForegroundColor Yellow
+$ActualStaged | ForEach-Object { Write-Host "  $_" }
+Confirm-ExactWord -Prompt 'Repository policy requires explicit commit authorization.' -Word 'COMMIT'
+
+Write-Step 'Commit exact staged candidate'
+Invoke-Native $GitPath @(
+    '-C',$RepoRoot,'commit','-m','D4Z Path A exact target-runtime qualification candidate'
+) 'GIT_COMMIT_FAILED'
+$CommitSha = (& $GitPath -C $RepoRoot rev-parse HEAD).Trim()
+Assert-True ([bool]$CommitSha) 'COMMIT_SHA_MISSING'
+$Committed = @(& $GitPath -C $RepoRoot diff-tree --no-commit-id --name-only -r HEAD | Sort-Object)
+$CommitDiff = @(Compare-Object -ReferenceObject $ExpectedStaged -DifferenceObject $Committed)
+Assert-True ($CommitDiff.Count -eq 0) ("COMMITTED_FILE_SET_MISMATCH::" + ($Committed -join ','))
+$PostCommitDirty = @(& $GitPath -C $RepoRoot status --porcelain)
+Assert-True ($PostCommitDirty.Count -eq 0) 'REPOSITORY_DIRTY_AFTER_COMMIT'
+Write-Host "COMMIT_SHA=$CommitSha"
+
+Write-Step 'Download and verify exact GitHub Actions runner'
+New-Item -ItemType Directory -Path $RunnerRoot -Force | Out-Null
+Invoke-WebRequest -Uri $RunnerArchiveUrl -OutFile $RunnerZip -UseBasicParsing
+$RunnerZipSha = Get-Sha256Lower $RunnerZip
+Assert-True ($RunnerZipSha -eq $RunnerArchiveSha256) "ACTIONS_RUNNER_ARCHIVE_HASH_MISMATCH::$RunnerZipSha"
+Expand-Archive -LiteralPath $RunnerZip -DestinationPath $RunnerRoot -Force
+Assert-True (Test-Path -LiteralPath (Join-Path $RunnerRoot 'config.cmd') -PathType Leaf) 'ACTIONS_RUNNER_CONFIG_MISSING'
+Assert-True (Test-Path -LiteralPath (Join-Path $RunnerRoot 'run.cmd') -PathType Leaf) 'ACTIONS_RUNNER_RUN_CMD_MISSING'
+
+Write-Step 'Acquire short-lived registration token and configure ephemeral runner'
+function Get-RunnerRegistrationToken {
+    $Raw = & $GhPath api --method POST "repos/$RepoFullName/actions/runners/registration-token"
+    if ($LASTEXITCODE -ne 0) { return $null }
+    try { return (($Raw | ConvertFrom-Json).token) } catch { return $null }
+}
+$RegistrationToken = Get-RunnerRegistrationToken
+if (-not $RegistrationToken) {
+    & $GhPath auth refresh --hostname github.com --scopes 'repo,workflow'
+    if ($LASTEXITCODE -ne 0) { throw "GH_AUTH_REFRESH_FAILED::$LASTEXITCODE" }
+    $RegistrationToken = Get-RunnerRegistrationToken
+}
+Assert-True ([bool]$RegistrationToken) 'RUNNER_REGISTRATION_TOKEN_ACQUISITION_FAILED'
+
+$RunnerName = "d4z-$env:COMPUTERNAME-$RunStamp"
+Push-Location $RunnerRoot
+try {
+    & .\config.cmd --unattended --url $RepoUrl --token $RegistrationToken --name $RunnerName --labels 'd4z-linux-docker' --ephemeral --disableupdate --work '_work'
