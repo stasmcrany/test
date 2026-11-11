@@ -1,0 +1,34 @@
+name: D4Z starter exact verification
+on:
+  push:
+    branches:
+      - chatgpt-d4z-start-verify-20261111
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify exact starter SHA256
+        shell: pwsh
+        run: |
+          $p='validation/D4Z_START.ps1'
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $p).Hash.ToLowerInvariant()
+          if($sha -ne '113b8e5358bc968a875f136ff8bae66eb071fc55e4fd4d64a374c93f8bdf8577'){throw "D4Z_START_SHA256_MISMATCH::$sha"}
+          Write-Host "D4Z_START_SHA256=$sha"
+      - name: Parse exact starter
+        shell: pwsh
+        run: |
+          $tokens=$null
+          $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'validation/D4Z_START.ps1').Path,
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if($errors.Count -ne 0){
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw "D4Z_START_PARSE_ERRORS::$($errors.Count)"
+          }
+          Write-Host 'D4Z_START_PARSE=PASS'
