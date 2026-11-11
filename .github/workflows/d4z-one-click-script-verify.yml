@@ -68,8 +68,9 @@ jobs:
           $rc=$LASTEXITCODE
           Write-Host $output
           if($rc -ne 0){throw "D4Z_ONE_CLICK_SELFTEST_EXIT::$rc"}
-          if($output -notmatch 'SELFTEST\s*:\s*PASS'){throw 'D4Z_ONE_CLICK_SELFTEST_MARKER_MISSING'}
-          if($output -notmatch 'LIVE_HTTP_POSTS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_LIVE_POSTS_NOT_ZERO'}
-          if($output -notmatch 'MODEL_CALLS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_MODEL_CALLS_NOT_ZERO'}
-          if($output -notmatch 'PRODUCTION_SEED_READS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_SEED_READS_NOT_ZERO'}
+          $plain = $output -replace '\[[0-?]*[ -/]*[@-~]',''
+          if($plain -notmatch 'SELFTEST\s*:\s*PASS'){throw 'D4Z_ONE_CLICK_SELFTEST_MARKER_MISSING'}
+          if($plain -notmatch 'LIVE_HTTP_POSTS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_LIVE_POSTS_NOT_ZERO'}
+          if($plain -notmatch 'MODEL_CALLS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_MODEL_CALLS_NOT_ZERO'}
+          if($plain -notmatch 'PRODUCTION_SEED_READS\s*:\s*0'){throw 'D4Z_ONE_CLICK_SELFTEST_SEED_READS_NOT_ZERO'}
           Write-Host 'D4Z_ONE_CLICK_SELFTEST=PASS'
